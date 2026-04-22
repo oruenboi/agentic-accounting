@@ -75,3 +75,6 @@ last_reviewed: 2026-04-07
 - [x] Add backend bootstrap and local run instructions to the release-facing docs.
 - [x] Add a standalone Supabase install options matrix for hosted and self-hosted OSS setups.
 - [x] Add a minimal API-only VPS deployment baseline for Docker Compose and Caddy.
+- [x] Add an initial read-only `agent-tools` registry and execution API over the existing reporting/health services.
+- [x] Reuse current Supabase bearer auth and tenant checks for the first `agent-tools` slice, deferring non-user client auth.
+- [x] Add request/response envelope coverage for `agent-tools` schema, single execute, and batch execute flows.
