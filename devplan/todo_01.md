@@ -1,0 +1,77 @@
+---
+owner: Codex
+status: in_progress
+last_reviewed: 2026-04-07
+---
+
+# TODO 01
+
+- [x] Capture audit-schema scope in planning docs.
+- [x] Create initial Supabase migration for `audit_logs` and `approval_actions`.
+- [x] Verify file layout and summarize implementation notes.
+- [x] Add tenant and membership schema for firms, organizations, and users.
+- [x] Add initial RLS helper functions and read policies for tenant isolation.
+- [x] Add core ledger schema for sequences, periods, journal drafts, entries, and reversals.
+- [x] Document remaining ledger invariants for follow-up enforcement.
+- [x] Add trigger/function enforcement for period overlap protection.
+- [x] Add trigger/function enforcement for posted ledger immutability.
+- [x] Add trigger/function enforcement for balanced journal posting.
+- [x] Update planning docs with confirmed architecture and readiness decisions.
+- [x] Add `approval_requests` header table and link existing approval references.
+- [x] Add detailed OpenClaw integration documentation covering plugin-only, core, and backend work.
+- [x] Create a documentation inventory covering all discussed topics and their documentation status.
+- [x] Add standalone repo docs for the architecture summary and v1 API spec.
+- [x] Add `idempotency_keys` request replay rules documentation.
+- [x] Add `idempotency_keys` schema and implementation.
+- [x] Add `agent_proposals` policy-gated proposal lifecycle documentation.
+- [x] Add standalone reporting design documentation.
+- [x] Add standalone balance sheet schedule design documentation.
+- [x] Add standalone storage blueprint documentation.
+- [x] Add standalone task, exception, and close workflow documentation.
+- [x] Add standalone audit read model documentation.
+- [x] Add standalone file and document model documentation.
+- [x] Add standalone background job architecture documentation.
+- [x] Add standalone operational setup documentation.
+- [x] Add standalone testing strategy documentation.
+- [x] Add standalone application logic layering documentation.
+- [x] Add standalone approval behavior documentation.
+- [x] Add standalone auditability strategy documentation.
+- [x] Add standalone API auth and client model documentation.
+- [x] Add standalone packaging and distribution model documentation.
+- [x] Add standalone OpenClaw distribution and hardening documentation.
+- [x] Add standalone ledger posting engine documentation.
+- [x] Add standalone user and agent flow documentation.
+- [x] Add standalone idempotency schema implementation documentation.
+- [x] Add standalone agent proposal schema implementation documentation.
+- [x] Add standalone reporting SQL implementation documentation.
+- [x] Add standalone schedule schema implementation documentation.
+- [x] Add standalone agent tool execution/auth implementation documentation.
+- [x] Add root OSS README documentation.
+- [x] Add self-host quickstart documentation.
+- [x] Add OpenClaw integration quickstart documentation.
+- [x] Add contribution guide documentation.
+- [x] Add license and governance documentation.
+- [x] Add roadmap and changelog documentation.
+- [x] Add Web UI page map and route documentation.
+- [x] Add Web UI component and interaction documentation.
+- [x] Add Web UI role visibility and screen priority documentation.
+- [x] Add docs site structure documentation.
+- [x] Add docs site navigation and IA documentation.
+- [x] Add docs publishing and source-of-truth documentation.
+- [x] Add backend process map documentation.
+- [ ] Choose and publish an OSS license for the repository.
+- [ ] Add a security policy / responsible disclosure doc for the public repo.
+- [ ] Sanity-check and finalize public-facing OSS docs (`README.md`, quickstarts, governance, roadmap).
+- [ ] Decide and document the OpenClaw companion-fork vs upstream support stance for the initial OSS release.
+- [ ] Plan one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup.
+- [x] Add `agent_proposals` schema and implementation.
+- [x] Add org-consistency and closed-period enforcement for ledger write paths.
+- [x] Define reporting SQL views for trial balance, balance sheet, P&L, and GL.
+- [x] Define schedule schema and balance sheet schedule generation flow.
+- [ ] Define agent tool execution/auth model for OpenClaw readiness.
+- [x] Scaffold the npm workspace and `apps/api` backend runtime skeleton.
+- [x] Add Supabase-backed configuration, database access, and auth verification services for the API.
+- [x] Add first read-only reporting endpoints for health, trial balance, balance sheet, profit and loss, and general ledger.
+- [x] Add backend bootstrap and local run instructions to the release-facing docs.
+- [x] Add a standalone Supabase install options matrix for hosted and self-hosted OSS setups.
+- [x] Add a minimal API-only VPS deployment baseline for Docker Compose and Caddy.
