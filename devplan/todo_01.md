@@ -96,3 +96,6 @@ last_reviewed: 2026-04-23
 - [x] Add automated tests for `list_agent_proposals` success and delegated tenant enforcement failures before exposing it live.
 - [x] Add a tenant-scoped `get_agent_proposal` agent tool so one persisted proposal can be inspected in detail with linked draft context.
 - [x] Add automated tests for `get_agent_proposal` success and delegated tenant enforcement failures before exposing it live.
+- [x] Add a tenant-scoped `submit_journal_entry_draft_for_approval` agent tool that transitions a validated draft into `pending_approval` and creates an `approval_requests` row.
+- [x] Update linked `agent_proposals` state during draft submission so proposal and draft stay workflow-consistent.
+- [x] Add automated tests for draft submission success, invalid draft state, and delegated tenant enforcement before exposing it live.

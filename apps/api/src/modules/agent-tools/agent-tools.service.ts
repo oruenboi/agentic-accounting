@@ -10,6 +10,7 @@ import { GetAgentProposalInputDto } from '../journal-tools/dto/get-agent-proposa
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
+import { SubmitJournalEntryDraftForApprovalInputDto } from '../journal-tools/dto/submit-journal-entry-draft-for-approval.dto';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ValidateJournalEntryInputDto } from '../journal-tools/dto/validate-journal-entry.dto';
 import {
@@ -646,6 +647,72 @@ export class AgentToolsService {
         },
         summarize: (result) =>
           `Created journal draft ${(result as { draft_number: string }).draft_number} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'submit_journal_entry_draft_for_approval',
+        description: 'Submits a validated journal draft into approval workflow and links its approval request.',
+        category: 'workflow',
+        mutability: 'proposal',
+        requires_approval: true,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: SubmitJournalEntryDraftForApprovalInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'draft_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            draft_id: { type: 'string', format: 'uuid' },
+            priority: { type: 'string', enum: ['low', 'normal', 'high', 'critical'] },
+            expires_at: { type: 'string', format: 'date-time' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'approval_request_id',
+            'actor_context',
+            'status',
+            'approval_status',
+            'requires_approval',
+            'priority',
+            'submitted_at'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            approval_request_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            approval_status: { type: 'string' },
+            requires_approval: { type: 'boolean' },
+            priority: { type: 'string' },
+            submitted_at: { type: 'string' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.submitJournalEntryDraftForApproval(
+            input as SubmitJournalEntryDraftForApprovalInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Submitted journal draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id} for approval.`
       },
       {
         name: 'get_general_ledger',

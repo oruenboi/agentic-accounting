@@ -374,4 +374,122 @@ describe('JournalDraftService', () => {
       })
     );
   });
+
+  it('submits a validated draft for approval and updates the linked proposal state', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'validated',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'pending',
+            priority: 'high',
+            created_at: '2026-04-23T10:00:00.000Z'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.submitJournalEntryDraftForApproval(
+      {
+        organization_id: input.organization_id,
+        draft_id: 'draft-1',
+        priority: 'high'
+      },
+      actor,
+      {
+        requestId: 'request-2',
+        correlationId: 'corr-2',
+        idempotencyKey: 'idem-submit-1',
+        toolName: 'submit_journal_entry_draft_for_approval'
+      }
+    );
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, input.organization_id);
+    expect(result).toEqual(
+      expect.objectContaining({
+        draft_id: 'draft-1',
+        draft_number: 'JE-000001',
+        proposal_id: 'proposal-1',
+        approval_request_id: 'approval-1',
+        status: 'pending_approval',
+        approval_status: 'pending',
+        requires_approval: true,
+        priority: 'high'
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(8);
+  });
+
+  it('rejects approval submission when the draft is not validated', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'draft',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.submitJournalEntryDraftForApproval(
+        {
+          organization_id: input.organization_id,
+          draft_id: 'draft-1'
+        },
+        actor,
+        {
+          requestId: 'request-2',
+          correlationId: 'corr-2',
+          idempotencyKey: 'idem-submit-1',
+          toolName: 'submit_journal_entry_draft_for_approval'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'DRAFT_SUBMISSION_INVALID_STATE'
+    });
+  });
 });

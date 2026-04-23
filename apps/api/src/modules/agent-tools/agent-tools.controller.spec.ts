@@ -10,6 +10,7 @@ import { HealthService } from '../health/health.service';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ReportsService } from '../reports/reports.service';
+import { AppError } from '../shared/app-error';
 
 describe('AgentToolsController', () => {
   let app: INestApplication;
@@ -35,7 +36,8 @@ describe('AgentToolsController', () => {
     createJournalEntryDraft: jest.fn(),
     getJournalEntryDraft: jest.fn(),
     listAgentProposals: jest.fn(),
-    getAgentProposal: jest.fn()
+    getAgentProposal: jest.fn(),
+    submitJournalEntryDraftForApproval: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -264,6 +266,26 @@ describe('AgentToolsController', () => {
       updated_at: '2026-04-23T10:00:00.000Z'
     });
 
+    journalDraftService.submitJournalEntryDraftForApproval.mockResolvedValue({
+      organization_id: organizationId,
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'pending_approval',
+      approval_status: 'pending',
+      requires_approval: true,
+      priority: 'high',
+      submitted_at: '2026-04-23T10:00:00.000Z'
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -347,7 +369,8 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'get_agent_proposal' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
-        expect.objectContaining({ name: 'create_journal_entry_draft' })
+        expect.objectContaining({ name: 'create_journal_entry_draft' }),
+        expect.objectContaining({ name: 'submit_journal_entry_draft_for_approval' })
       ])
     );
   });
@@ -590,6 +613,93 @@ describe('AgentToolsController', () => {
           draft_number: 'JE-000001'
         })
       })
+    );
+  });
+
+  it('submits journal entry drafts for approval for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'submit_journal_entry_draft_for_approval',
+        idempotency_key: 'idem-submit-journal-entry-draft',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          priority: 'high'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.submitJournalEntryDraftForApproval).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001',
+        status: 'pending_approval'
+      })
+    );
+  });
+
+  it('returns invalid state errors when approval submission is attempted for an ineligible draft', async () => {
+    journalDraftService.submitJournalEntryDraftForApproval.mockRejectedValueOnce(
+      new AppError(
+        'DRAFT_SUBMISSION_INVALID_STATE',
+        'Journal draft 880e8400-e29b-41d4-a716-446655440000 must be in validated status before it can be submitted for approval.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'submit_journal_entry_draft_for_approval',
+        idempotency_key: 'idem-submit-journal-entry-draft-invalid',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'DRAFT_SUBMISSION_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated approval submission fails membership checks', async () => {
+    journalDraftService.submitJournalEntryDraftForApproval.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'submit_journal_entry_draft_for_approval',
+        idempotency_key: 'idem-submit-journal-entry-draft-denied',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
+      ])
     );
   });
 
