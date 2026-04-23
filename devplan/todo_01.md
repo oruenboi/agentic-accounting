@@ -99,3 +99,6 @@ last_reviewed: 2026-04-23
 - [x] Add a tenant-scoped `submit_journal_entry_draft_for_approval` agent tool that transitions a validated draft into `pending_approval` and creates an `approval_requests` row.
 - [x] Update linked `agent_proposals` state during draft submission so proposal and draft stay workflow-consistent.
 - [x] Add automated tests for draft submission success, invalid draft state, and delegated tenant enforcement before exposing it live.
+- [x] Add tenant-scoped `get_approval_request` and `list_approval_requests` agent tools so approval workflow state can be inspected without direct SQL access.
+- [x] Add a tenant-scoped `resolve_approval_request` agent tool that records an approval action and transitions linked approval request, draft, and proposal state to `approved` or `rejected`.
+- [x] Add automated tests for approval request read/list success plus approval resolution success, invalid state, and delegated tenant enforcement before exposing the tools live.

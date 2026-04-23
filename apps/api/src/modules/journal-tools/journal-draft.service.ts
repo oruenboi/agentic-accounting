@@ -5,9 +5,12 @@ import { TenantAccessService } from '../auth/tenant-access.service';
 import { DatabaseService, type Queryable } from '../database/database.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
+import { GetApprovalRequestInputDto } from './dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from './dto/get-agent-proposal.dto';
 import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
+import { ListApprovalRequestsInputDto } from './dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
+import { ResolveApprovalRequestInputDto } from './dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from './dto/submit-journal-entry-draft-for-approval.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
 import { JournalValidationService } from './journal-validation.service';
@@ -126,6 +129,45 @@ interface ApprovalRequestInsertRow {
   status: string;
   priority: string;
   created_at: string;
+}
+
+interface ApprovalRequestSummaryRow {
+  approval_request_id: string;
+  status: string;
+  priority: string;
+  action_type: string;
+  target_entity_type: string;
+  target_entity_id: string;
+  submitted_at: string;
+  submitted_by_actor_type: string;
+  submitted_by_actor_id: string;
+  submitted_by_user_id: string | null;
+  current_approver_user_id: string | null;
+  expires_at: string | null;
+  resolved_at: string | null;
+  resolved_by_user_id: string | null;
+  resolution_reason: string | null;
+  metadata: Record<string, unknown> | null;
+  draft_number: string | null;
+  draft_status: string | null;
+  proposal_id: string | null;
+  proposal_status: string | null;
+}
+
+interface ApprovalActionRow {
+  approval_action_id: string;
+  action: string;
+  action_timestamp: string;
+  actor_type: string;
+  actor_id: string;
+  actor_display_name: string | null;
+  user_id: string | null;
+  decision_reason: string | null;
+  comments: string | null;
+  request_id: string | null;
+  correlation_id: string | null;
+  idempotency_key: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 @Injectable()
@@ -952,6 +994,483 @@ export class JournalDraftService {
         `,
         [
           approvalRequest.approval_request_id,
+          JSON.stringify(response),
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.idempotencyKey,
+          context.toolName
+        ]
+      );
+
+      return response;
+    });
+  }
+
+  async listApprovalRequests(input: ListApprovalRequestsInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const limit = input.limit ?? 20;
+
+    const result = await this.databaseService.query<ApprovalRequestSummaryRow>(
+      `
+        select
+          ar.id::text as approval_request_id,
+          ar.status,
+          ar.priority,
+          ar.action_type,
+          ar.target_entity_type,
+          ar.target_entity_id,
+          ar.created_at::text as submitted_at,
+          ar.submitted_by_actor_type,
+          ar.submitted_by_actor_id,
+          ar.submitted_by_user_id::text,
+          ar.current_approver_user_id::text,
+          ar.expires_at::text,
+          ar.resolved_at::text,
+          ar.resolved_by_user_id::text,
+          ar.resolution_reason,
+          ar.metadata,
+          d.draft_number,
+          d.status as draft_status,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status
+        from public.approval_requests ar
+        left join public.journal_entry_drafts d
+          on ar.target_entity_type = 'journal_entry_draft'
+         and d.id::text = ar.target_entity_id
+        left join public.agent_proposals ap
+          on ap.approval_request_id = ar.id
+         and ap.organization_id = ar.organization_id
+        where ar.organization_id = $1::uuid
+          and ($2::text is null or ar.status = $2::text)
+        order by ar.created_at desc
+        limit $3
+      `,
+      [input.organization_id, input.status ?? null, limit]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      actor_context: actorContext,
+      filters: {
+        status: input.status ?? null,
+        limit
+      },
+      items: result.rows.map((row) => ({
+        approval_request_id: row.approval_request_id,
+        status: row.status,
+        priority: row.priority,
+        action_type: row.action_type,
+        submitted_at: row.submitted_at,
+        submitted_by: {
+          actor_type: row.submitted_by_actor_type,
+          actor_id: row.submitted_by_actor_id,
+          user_id: row.submitted_by_user_id
+        },
+        target: {
+          entity_type: row.target_entity_type,
+          entity_id: row.target_entity_id,
+          draft_number: row.draft_number,
+          draft_status: row.draft_status,
+          proposal_id: row.proposal_id,
+          proposal_status: row.proposal_status
+        },
+        current_approver_user_id: row.current_approver_user_id,
+        expires_at: row.expires_at,
+        resolved_at: row.resolved_at,
+        resolved_by_user_id: row.resolved_by_user_id,
+        resolution_reason: row.resolution_reason,
+        metadata: row.metadata ?? {}
+      }))
+    };
+  }
+
+  async getApprovalRequest(input: GetApprovalRequestInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const result = await this.databaseService.query<ApprovalRequestSummaryRow>(
+      `
+        select
+          ar.id::text as approval_request_id,
+          ar.status,
+          ar.priority,
+          ar.action_type,
+          ar.target_entity_type,
+          ar.target_entity_id,
+          ar.created_at::text as submitted_at,
+          ar.submitted_by_actor_type,
+          ar.submitted_by_actor_id,
+          ar.submitted_by_user_id::text,
+          ar.current_approver_user_id::text,
+          ar.expires_at::text,
+          ar.resolved_at::text,
+          ar.resolved_by_user_id::text,
+          ar.resolution_reason,
+          ar.metadata,
+          d.draft_number,
+          d.status as draft_status,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status
+        from public.approval_requests ar
+        left join public.journal_entry_drafts d
+          on ar.target_entity_type = 'journal_entry_draft'
+         and d.id::text = ar.target_entity_id
+        left join public.agent_proposals ap
+          on ap.approval_request_id = ar.id
+         and ap.organization_id = ar.organization_id
+        where ar.id = $1::uuid
+          and ar.organization_id = $2::uuid
+        limit 1
+      `,
+      [input.approval_request_id, input.organization_id]
+    );
+
+    const approvalRequest = result.rows[0];
+
+    if (approvalRequest === undefined) {
+      throw new AppError(
+        'APPROVAL_REQUEST_NOT_FOUND',
+        `Approval request ${input.approval_request_id} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    const actionsResult = await this.databaseService.query<ApprovalActionRow>(
+      `
+        select
+          aa.id::text as approval_action_id,
+          aa.action,
+          aa.action_timestamp::text,
+          aa.actor_type,
+          aa.actor_id,
+          aa.actor_display_name,
+          aa.user_id::text,
+          aa.decision_reason,
+          aa.comments,
+          aa.request_id,
+          aa.correlation_id,
+          aa.idempotency_key,
+          aa.metadata
+        from public.approval_actions aa
+        where aa.approval_request_id = $1::uuid
+        order by aa.action_timestamp asc, aa.created_at asc
+      `,
+      [input.approval_request_id]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      approval_request_id: approvalRequest.approval_request_id,
+      actor_context: actorContext,
+      status: approvalRequest.status,
+      priority: approvalRequest.priority,
+      action_type: approvalRequest.action_type,
+      submitted_at: approvalRequest.submitted_at,
+      submitted_by: {
+        actor_type: approvalRequest.submitted_by_actor_type,
+        actor_id: approvalRequest.submitted_by_actor_id,
+        user_id: approvalRequest.submitted_by_user_id
+      },
+      target: {
+        entity_type: approvalRequest.target_entity_type,
+        entity_id: approvalRequest.target_entity_id,
+        draft_number: approvalRequest.draft_number,
+        draft_status: approvalRequest.draft_status,
+        proposal_id: approvalRequest.proposal_id,
+        proposal_status: approvalRequest.proposal_status
+      },
+      current_approver_user_id: approvalRequest.current_approver_user_id,
+      expires_at: approvalRequest.expires_at,
+      resolved_at: approvalRequest.resolved_at,
+      resolved_by_user_id: approvalRequest.resolved_by_user_id,
+      resolution_reason: approvalRequest.resolution_reason,
+      metadata: approvalRequest.metadata ?? {},
+      actions: actionsResult.rows.map((row) => ({
+        approval_action_id: row.approval_action_id,
+        action: row.action,
+        action_timestamp: row.action_timestamp,
+        actor_type: row.actor_type,
+        actor_id: row.actor_id,
+        actor_display_name: row.actor_display_name,
+        user_id: row.user_id,
+        decision_reason: row.decision_reason,
+        comments: row.comments,
+        request_id: row.request_id,
+        correlation_id: row.correlation_id,
+        idempotency_key: row.idempotency_key,
+        metadata: row.metadata ?? {}
+      }))
+    };
+  }
+
+  async resolveApprovalRequest(
+    input: ResolveApprovalRequestInputDto,
+    actor: AuthenticatedActor,
+    context: ToolRequestContext
+  ) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const requestHash = this.hashRequestPayload(input);
+    const actorType = actor.actorType;
+    const actorId = this.resolveActorId(actor);
+
+    return this.databaseService.withTransaction(async (client) => {
+      const existing = await this.loadIdempotencyRecord(
+        client,
+        actorContext.firmId,
+        input.organization_id,
+        actorType,
+        actorId,
+        context.idempotencyKey,
+        context.toolName
+      );
+
+      if (existing !== null) {
+        if (existing.request_hash !== requestHash) {
+          throw new AppError(
+            'IDEMPOTENCY_CONFLICT',
+            'The supplied idempotency_key was already used with a different resolve_approval_request payload.'
+          );
+        }
+
+        if (existing.status === 'succeeded' && existing.response_body !== null) {
+          return existing.response_body;
+        }
+
+        throw new AppError(
+          'IDEMPOTENCY_CONFLICT',
+          `The supplied idempotency_key is already reserved for resolve_approval_request with status ${existing.status}.`
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.idempotency_keys (
+            firm_id,
+            organization_id,
+            actor_type,
+            actor_id,
+            request_id,
+            idempotency_key,
+            operation_name,
+            request_hash,
+            normalized_payload,
+            status
+          )
+          values ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending')
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.requestId,
+          context.idempotencyKey,
+          context.toolName,
+          requestHash,
+          JSON.stringify(this.normalizePayload(input))
+        ]
+      );
+
+      const result = await client.query<ApprovalRequestSummaryRow>(
+        `
+          select
+            ar.id::text as approval_request_id,
+            ar.status,
+            ar.priority,
+            ar.action_type,
+            ar.target_entity_type,
+            ar.target_entity_id,
+            ar.created_at::text as submitted_at,
+            ar.submitted_by_actor_type,
+            ar.submitted_by_actor_id,
+            ar.submitted_by_user_id::text,
+            ar.current_approver_user_id::text,
+            ar.expires_at::text,
+            ar.resolved_at::text,
+            ar.resolved_by_user_id::text,
+            ar.resolution_reason,
+            ar.metadata,
+            d.draft_number,
+            d.status as draft_status,
+            ap.id::text as proposal_id,
+            ap.status as proposal_status
+          from public.approval_requests ar
+          left join public.journal_entry_drafts d
+            on ar.target_entity_type = 'journal_entry_draft'
+           and d.id::text = ar.target_entity_id
+          left join public.agent_proposals ap
+            on ap.approval_request_id = ar.id
+           and ap.organization_id = ar.organization_id
+          where ar.id = $1::uuid
+            and ar.organization_id = $2::uuid
+          limit 1
+        `,
+        [input.approval_request_id, input.organization_id]
+      );
+
+      const approvalRequest = result.rows[0];
+
+      if (approvalRequest === undefined) {
+        throw new AppError(
+          'APPROVAL_REQUEST_NOT_FOUND',
+          `Approval request ${input.approval_request_id} was not found for organization ${input.organization_id}.`
+        );
+      }
+
+      if (approvalRequest.status !== 'pending') {
+        throw new AppError(
+          'APPROVAL_REQUEST_INVALID_STATE',
+          `Approval request ${input.approval_request_id} must be pending before it can be resolved.`
+        );
+      }
+
+      if (approvalRequest.target_entity_type !== 'journal_entry_draft') {
+        throw new AppError(
+          'APPROVAL_TARGET_UNSUPPORTED',
+          `Approval request ${input.approval_request_id} targets unsupported entity type ${approvalRequest.target_entity_type}.`
+        );
+      }
+
+      await client.query(
+        `
+          update public.approval_requests
+          set
+            status = $1,
+            resolved_at = now(),
+            resolved_by_user_id = $2::uuid,
+            resolution_reason = $3,
+            updated_at = now()
+          where id = $4::uuid
+        `,
+        [input.resolution, actorContext.appUserId, input.reason ?? null, input.approval_request_id]
+      );
+
+      await client.query(
+        `
+          insert into public.approval_actions (
+            approval_request_id,
+            firm_id,
+            organization_id,
+            action,
+            actor_type,
+            actor_id,
+            actor_display_name,
+            user_id,
+            decision_reason,
+            comments,
+            request_id,
+            correlation_id,
+            idempotency_key,
+            target_entity_type,
+            target_entity_id,
+            policy_snapshot,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8::uuid,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13,
+            $14,
+            $15,
+            '{}'::jsonb,
+            $16::jsonb
+          )
+        `,
+        [
+          input.approval_request_id,
+          actorContext.firmId,
+          input.organization_id,
+          input.resolution,
+          actorType,
+          actorId,
+          actor.agentName ?? null,
+          actorContext.appUserId,
+          input.reason ?? null,
+          input.comments ?? null,
+          context.requestId,
+          context.correlationId,
+          context.idempotencyKey,
+          approvalRequest.target_entity_type,
+          approvalRequest.target_entity_id,
+          JSON.stringify({
+            resolved_via_tool: context.toolName
+          })
+        ]
+      );
+
+      const draftStatus = input.resolution === 'approved' ? 'approved' : 'rejected';
+      await client.query(
+        `
+          update public.journal_entry_drafts
+          set
+            status = $1,
+            approved_at = case when $1 = 'approved' then now() else approved_at end,
+            approved_by_user_id = case when $1 = 'approved' then $2::uuid else approved_by_user_id end,
+            rejection_reason = case when $1 = 'rejected' then $3 else rejection_reason end,
+            updated_at = now()
+          where id::text = $4
+            and organization_id = $5::uuid
+        `,
+        [draftStatus, actorContext.appUserId, input.reason ?? null, approvalRequest.target_entity_id, input.organization_id]
+      );
+
+      await client.query(
+        `
+          update public.agent_proposals
+          set
+            status = $1,
+            resolved_at = now(),
+            resolved_by_user_id = $2::uuid,
+            updated_at = now()
+          where approval_request_id = $3::uuid
+            and organization_id = $4::uuid
+        `,
+        [input.resolution, actorContext.appUserId, input.approval_request_id, input.organization_id]
+      );
+
+      const response = {
+        organization_id: input.organization_id,
+        approval_request_id: input.approval_request_id,
+        draft_id: approvalRequest.target_entity_id,
+        draft_number: approvalRequest.draft_number,
+        proposal_id: approvalRequest.proposal_id,
+        actor_context: actorContext,
+        status: input.resolution,
+        draft_status: draftStatus,
+        proposal_status: input.resolution,
+        resolved_at: new Date().toISOString(),
+        resolution_reason: input.reason ?? null
+      };
+
+      await client.query(
+        `
+          update public.idempotency_keys
+          set
+            status = 'succeeded',
+            resource_type = 'approval_request',
+            resource_id = $1,
+            response_code = 201,
+            response_body = $2::jsonb,
+            last_seen_at = now()
+          where firm_id = $3::uuid
+            and organization_id = $4::uuid
+            and actor_type = $5
+            and actor_id = $6
+            and idempotency_key = $7
+            and operation_name = $8
+        `,
+        [
+          input.approval_request_id,
           JSON.stringify(response),
           actorContext.firmId,
           input.organization_id,

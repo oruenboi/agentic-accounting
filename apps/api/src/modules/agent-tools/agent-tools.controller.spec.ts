@@ -37,7 +37,10 @@ describe('AgentToolsController', () => {
     getJournalEntryDraft: jest.fn(),
     listAgentProposals: jest.fn(),
     getAgentProposal: jest.fn(),
-    submitJournalEntryDraftForApproval: jest.fn()
+    submitJournalEntryDraftForApproval: jest.fn(),
+    listApprovalRequests: jest.fn(),
+    getApprovalRequest: jest.fn(),
+    resolveApprovalRequest: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -286,6 +289,121 @@ describe('AgentToolsController', () => {
       submitted_at: '2026-04-23T10:00:00.000Z'
     });
 
+    journalDraftService.listApprovalRequests.mockResolvedValue({
+      organization_id: organizationId,
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      filters: {
+        status: 'pending',
+        limit: 10
+      },
+      items: [
+        {
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          status: 'pending',
+          priority: 'high',
+          action_type: 'ledger.journal_draft.submitted_for_approval',
+          submitted_at: '2026-04-23T10:00:00.000Z',
+          submitted_by: {
+            actor_type: 'agent',
+            actor_id: 'test-agent-client',
+            user_id: 'app-user-1'
+          },
+          target: {
+            entity_type: 'journal_entry_draft',
+            entity_id: '880e8400-e29b-41d4-a716-446655440000',
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+            proposal_status: 'pending_approval'
+          },
+          current_approver_user_id: null,
+          expires_at: null,
+          resolved_at: null,
+          resolved_by_user_id: null,
+          resolution_reason: null,
+          metadata: {}
+        }
+      ]
+    });
+
+    journalDraftService.getApprovalRequest.mockResolvedValue({
+      organization_id: organizationId,
+      approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'pending',
+      priority: 'high',
+      action_type: 'ledger.journal_draft.submitted_for_approval',
+      submitted_at: '2026-04-23T10:00:00.000Z',
+      submitted_by: {
+        actor_type: 'agent',
+        actor_id: 'test-agent-client',
+        user_id: 'app-user-1'
+      },
+      target: {
+        entity_type: 'journal_entry_draft',
+        entity_id: '880e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001',
+        draft_status: 'pending_approval',
+        proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+        proposal_status: 'pending_approval'
+      },
+      current_approver_user_id: null,
+      expires_at: null,
+      resolved_at: null,
+      resolved_by_user_id: null,
+      resolution_reason: null,
+      metadata: {},
+      actions: [
+        {
+          approval_action_id: 'action-1',
+          action: 'submitted',
+          action_timestamp: '2026-04-23T10:00:00.000Z',
+          actor_type: 'agent',
+          actor_id: 'test-agent-client',
+          actor_display_name: 'test-agent',
+          user_id: 'app-user-1',
+          decision_reason: null,
+          comments: null,
+          request_id: 'request-1',
+          correlation_id: 'corr-1',
+          idempotency_key: 'idem-1',
+          metadata: {}
+        }
+      ]
+    });
+
+    journalDraftService.resolveApprovalRequest.mockResolvedValue({
+      organization_id: organizationId,
+      approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'approved',
+      draft_status: 'approved',
+      proposal_status: 'approved',
+      resolved_at: '2026-04-23T11:00:00.000Z',
+      resolution_reason: 'Threshold review complete'
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -367,7 +485,10 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'get_health_status' }),
         expect.objectContaining({ name: 'get_trial_balance' }),
         expect.objectContaining({ name: 'get_agent_proposal' }),
+        expect.objectContaining({ name: 'get_approval_request' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
+        expect.objectContaining({ name: 'list_approval_requests' }),
+        expect.objectContaining({ name: 'resolve_approval_request' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' }),
         expect.objectContaining({ name: 'submit_journal_entry_draft_for_approval' })
@@ -613,6 +734,155 @@ describe('AgentToolsController', () => {
           draft_number: 'JE-000001'
         })
       })
+    );
+  });
+
+  it('lists approval requests for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'list_approval_requests',
+        input: {
+          organization_id: organizationId,
+          status: 'pending',
+          limit: 10
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.listApprovalRequests).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        filters: {
+          status: 'pending',
+          limit: 10
+        },
+        items: [
+          expect.objectContaining({
+            approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000'
+          })
+        ]
+      })
+    );
+  });
+
+  it('returns one approval request for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_approval_request',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getApprovalRequest).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+        actions: [expect.objectContaining({ action: 'submitted' })]
+      })
+    );
+  });
+
+  it('resolves approval requests for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resolve_approval_request',
+        idempotency_key: 'idem-resolve-approval-request',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          resolution: 'approved',
+          reason: 'Threshold review complete'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.resolveApprovalRequest).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+        status: 'approved',
+        draft_status: 'approved',
+        proposal_status: 'approved'
+      })
+    );
+  });
+
+  it('returns invalid state errors when approval resolution is attempted for an ineligible request', async () => {
+    journalDraftService.resolveApprovalRequest.mockRejectedValueOnce(
+      new AppError(
+        'APPROVAL_REQUEST_INVALID_STATE',
+        'Approval request aa0e8400-e29b-41d4-a716-446655440000 must be pending before it can be resolved.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resolve_approval_request',
+        idempotency_key: 'idem-resolve-approval-request-invalid',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          resolution: 'approved'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'APPROVAL_REQUEST_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated approval resolution fails membership checks', async () => {
+    journalDraftService.resolveApprovalRequest.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resolve_approval_request',
+        idempotency_key: 'idem-resolve-approval-request-denied',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          resolution: 'approved'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
+      ])
     );
   });
 

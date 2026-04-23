@@ -492,4 +492,259 @@ describe('JournalDraftService', () => {
       code: 'DRAFT_SUBMISSION_INVALID_STATE'
     });
   });
+
+  it('lists approval requests for an organization', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          approval_request_id: 'approval-1',
+          status: 'pending',
+          priority: 'high',
+          action_type: 'ledger.journal_draft.submitted_for_approval',
+          target_entity_type: 'journal_entry_draft',
+          target_entity_id: 'draft-1',
+          submitted_at: '2026-04-23T10:00:00.000Z',
+          submitted_by_actor_type: 'agent',
+          submitted_by_actor_id: 'test-agent-client',
+          submitted_by_user_id: actorContext.appUserId,
+          current_approver_user_id: null,
+          expires_at: null,
+          resolved_at: null,
+          resolved_by_user_id: null,
+          resolution_reason: null,
+          metadata: {},
+          draft_number: 'JE-000001',
+          draft_status: 'pending_approval',
+          proposal_id: 'proposal-1',
+          proposal_status: 'pending_approval'
+        }
+      ]
+    });
+
+    const result = await service.listApprovalRequests(
+      {
+        organization_id: input.organization_id,
+        status: 'pending',
+        limit: 10
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        organization_id: input.organization_id,
+        filters: { status: 'pending', limit: 10 }
+      })
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        approval_request_id: 'approval-1',
+        target: expect.objectContaining({
+          draft_number: 'JE-000001',
+          proposal_status: 'pending_approval'
+        })
+      })
+    ]);
+  });
+
+  it('returns one approval request with action history', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'pending',
+            priority: 'high',
+            action_type: 'ledger.journal_draft.submitted_for_approval',
+            target_entity_type: 'journal_entry_draft',
+            target_entity_id: 'draft-1',
+            submitted_at: '2026-04-23T10:00:00.000Z',
+            submitted_by_actor_type: 'agent',
+            submitted_by_actor_id: 'test-agent-client',
+            submitted_by_user_id: actorContext.appUserId,
+            current_approver_user_id: null,
+            expires_at: null,
+            resolved_at: null,
+            resolved_by_user_id: null,
+            resolution_reason: null,
+            metadata: {},
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: 'proposal-1',
+            proposal_status: 'pending_approval'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_action_id: 'action-1',
+            action: 'submitted',
+            action_timestamp: '2026-04-23T10:00:00.000Z',
+            actor_type: 'agent',
+            actor_id: 'test-agent-client',
+            actor_display_name: 'test-agent',
+            user_id: actorContext.appUserId,
+            decision_reason: null,
+            comments: null,
+            request_id: 'request-2',
+            correlation_id: 'corr-2',
+            idempotency_key: 'idem-submit-1',
+            metadata: {}
+          }
+        ]
+      });
+
+    const result = await service.getApprovalRequest(
+      {
+        organization_id: input.organization_id,
+        approval_request_id: 'approval-1'
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'approval-1',
+        target: expect.objectContaining({
+          draft_number: 'JE-000001',
+          proposal_id: 'proposal-1'
+        })
+      })
+    );
+    expect(result.actions).toHaveLength(1);
+  });
+
+  it('resolves a pending approval request and updates linked draft and proposal state', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'pending',
+            priority: 'high',
+            action_type: 'ledger.journal_draft.submitted_for_approval',
+            target_entity_type: 'journal_entry_draft',
+            target_entity_id: 'draft-1',
+            submitted_at: '2026-04-23T10:00:00.000Z',
+            submitted_by_actor_type: 'agent',
+            submitted_by_actor_id: 'test-agent-client',
+            submitted_by_user_id: actorContext.appUserId,
+            current_approver_user_id: null,
+            expires_at: null,
+            resolved_at: null,
+            resolved_by_user_id: null,
+            resolution_reason: null,
+            metadata: {},
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: 'proposal-1',
+            proposal_status: 'pending_approval'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.resolveApprovalRequest(
+      {
+        organization_id: input.organization_id,
+        approval_request_id: 'approval-1',
+        resolution: 'approved',
+        reason: 'Threshold review complete'
+      },
+      actor,
+      {
+        requestId: 'request-3',
+        correlationId: 'corr-3',
+        idempotencyKey: 'idem-resolve-1',
+        toolName: 'resolve_approval_request'
+      }
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'approval-1',
+        draft_id: 'draft-1',
+        draft_number: 'JE-000001',
+        proposal_id: 'proposal-1',
+        status: 'approved',
+        draft_status: 'approved',
+        proposal_status: 'approved',
+        resolution_reason: 'Threshold review complete'
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(8);
+  });
+
+  it('rejects approval resolution when the request is not pending', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'approved',
+            priority: 'high',
+            action_type: 'ledger.journal_draft.submitted_for_approval',
+            target_entity_type: 'journal_entry_draft',
+            target_entity_id: 'draft-1',
+            submitted_at: '2026-04-23T10:00:00.000Z',
+            submitted_by_actor_type: 'agent',
+            submitted_by_actor_id: 'test-agent-client',
+            submitted_by_user_id: actorContext.appUserId,
+            current_approver_user_id: null,
+            expires_at: null,
+            resolved_at: '2026-04-23T11:00:00.000Z',
+            resolved_by_user_id: actorContext.appUserId,
+            resolution_reason: 'Done',
+            metadata: {},
+            draft_number: 'JE-000001',
+            draft_status: 'approved',
+            proposal_id: 'proposal-1',
+            proposal_status: 'approved'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.resolveApprovalRequest(
+        {
+          organization_id: input.organization_id,
+          approval_request_id: 'approval-1',
+          resolution: 'approved'
+        },
+        actor,
+        {
+          requestId: 'request-3',
+          correlationId: 'corr-3',
+          idempotencyKey: 'idem-resolve-1',
+          toolName: 'resolve_approval_request'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'APPROVAL_REQUEST_INVALID_STATE'
+    });
+  });
 });
