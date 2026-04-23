@@ -71,6 +71,7 @@ describe('JournalDraftService', () => {
   };
 
   const databaseService = {
+    query: jest.fn(),
     withTransaction: jest.fn()
   };
 
@@ -192,5 +193,76 @@ describe('JournalDraftService', () => {
     ).rejects.toMatchObject({
       code: 'IDEMPOTENCY_CONFLICT'
     });
+  });
+
+  it('returns a persisted journal draft with lines and linked proposal state', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'validated',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            accounting_period_id: 'period-1',
+            created_by_actor_type: 'agent',
+            created_by_actor_id: 'test-agent-client',
+            created_by_user_id: actorContext.appUserId,
+            proposal_id: 'proposal-1',
+            proposal_status: 'needs_review',
+            validation_summary: { valid: true },
+            metadata: { source: 'test' }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'line-1',
+            line_number: 1,
+            account_id: input.lines[0].account_id,
+            account_code: '5000',
+            account_name: 'Operating Expense',
+            description: null,
+            debit: '100.00',
+            credit: '0.00'
+          },
+          {
+            id: 'line-2',
+            line_number: 2,
+            account_id: input.lines[1].account_id,
+            account_code: '2000',
+            account_name: 'Accounts Payable',
+            description: null,
+            debit: '0.00',
+            credit: '100.00'
+          }
+        ]
+      });
+
+    const result = await service.getJournalEntryDraft(
+      {
+        organization_id: input.organization_id,
+        draft_id: 'draft-1'
+      },
+      actor
+    );
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, input.organization_id);
+    expect(result).toEqual(
+      expect.objectContaining({
+        draft_id: 'draft-1',
+        draft_number: 'JE-000001',
+        proposal: {
+          proposal_id: 'proposal-1',
+          status: 'needs_review'
+        }
+      })
+    );
+    expect(result.lines).toHaveLength(2);
   });
 });

@@ -90,3 +90,5 @@ last_reviewed: 2026-04-23
 - [x] Add minimal application-layer idempotency handling for `create_journal_entry_draft`, including replay on matching succeeded requests and conflict on mismatched payload reuse.
 - [x] Persist a linked `agent_proposals` record when `create_journal_entry_draft` succeeds so the review layer can inspect draft provenance.
 - [x] Add automated tests for `create_journal_entry_draft` success, idempotency replay/conflict, and delegated tenant enforcement before exposing it live.
+- [x] Add a tenant-scoped `get_journal_entry_draft` agent tool so persisted draft/proposal state can be read back safely.
+- [x] Add automated tests for `get_journal_entry_draft` success and delegated tenant enforcement failures before exposing it live.

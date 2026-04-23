@@ -5,6 +5,7 @@ import { TenantAccessService } from '../auth/tenant-access.service';
 import { DatabaseService, type Queryable } from '../database/database.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
+import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
 import { JournalValidationService } from './journal-validation.service';
 
@@ -33,6 +34,35 @@ interface DraftRow {
 
 interface ProposalRow {
   id: string;
+}
+
+interface DraftDetailRow {
+  draft_id: string;
+  draft_number: string | null;
+  status: string;
+  entry_date: string;
+  memo: string | null;
+  source_type: string;
+  source_id: string | null;
+  accounting_period_id: string | null;
+  created_by_actor_type: string;
+  created_by_actor_id: string;
+  created_by_user_id: string | null;
+  proposal_id: string | null;
+  proposal_status: string | null;
+  validation_summary: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface DraftLineRow {
+  id: string;
+  line_number: number;
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  description: string | null;
+  debit: string;
+  credit: string;
 }
 
 @Injectable()
@@ -316,6 +346,106 @@ export class JournalDraftService {
 
       return response;
     });
+  }
+
+  async getJournalEntryDraft(input: GetJournalEntryDraftInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const draftResult = await this.databaseService.query<DraftDetailRow>(
+      `
+        select
+          d.id::text as draft_id,
+          d.draft_number,
+          d.status,
+          d.entry_date::text,
+          d.memo,
+          d.source_type,
+          d.source_id,
+          d.accounting_period_id::text,
+          d.created_by_actor_type,
+          d.created_by_actor_id,
+          d.created_by_user_id::text,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status,
+          d.validation_summary,
+          d.metadata
+        from public.journal_entry_drafts d
+        left join public.agent_proposals ap
+          on ap.target_entity_type = 'journal_entry_draft'
+         and ap.target_entity_id = d.id
+        where d.id = $1::uuid
+          and d.organization_id = $2::uuid
+        order by ap.created_at desc nulls last
+        limit 1
+      `,
+      [input.draft_id, input.organization_id]
+    );
+
+    const draft = draftResult.rows[0];
+
+    if (draft === undefined) {
+      throw new AppError(
+        'DRAFT_NOT_FOUND',
+        `Journal draft ${input.draft_id} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    const linesResult = await this.databaseService.query<DraftLineRow>(
+      `
+        select
+          l.id::text,
+          l.line_number,
+          l.account_id::text,
+          a.code as account_code,
+          a.name as account_name,
+          l.description,
+          l.debit::text,
+          l.credit::text
+        from public.journal_entry_draft_lines l
+        join public.accounts a
+          on a.id = l.account_id
+        where l.draft_id = $1::uuid
+        order by l.line_number asc
+      `,
+      [input.draft_id]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      draft_id: draft.draft_id,
+      draft_number: draft.draft_number,
+      status: draft.status,
+      entry_date: draft.entry_date,
+      memo: draft.memo,
+      source_type: draft.source_type,
+      source_id: draft.source_id,
+      accounting_period_id: draft.accounting_period_id,
+      actor_context: actorContext,
+      created_by: {
+        actor_type: draft.created_by_actor_type,
+        actor_id: draft.created_by_actor_id,
+        user_id: draft.created_by_user_id
+      },
+      proposal:
+        draft.proposal_id === null
+          ? null
+          : {
+              proposal_id: draft.proposal_id,
+              status: draft.proposal_status
+            },
+      validation_summary: draft.validation_summary ?? {},
+      metadata: draft.metadata ?? {},
+      lines: linesResult.rows.map((line) => ({
+        id: line.id,
+        line_number: line.line_number,
+        account_id: line.account_id,
+        account_code: line.account_code,
+        account_name: line.account_name,
+        description: line.description,
+        debit: Number(line.debit),
+        credit: Number(line.credit)
+      }))
+    };
   }
 
   private async loadIdempotencyRecord(

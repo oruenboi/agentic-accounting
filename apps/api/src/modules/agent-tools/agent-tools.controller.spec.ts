@@ -32,7 +32,8 @@ describe('AgentToolsController', () => {
   };
 
   const journalDraftService = {
-    createJournalEntryDraft: jest.fn()
+    createJournalEntryDraft: jest.fn(),
+    getJournalEntryDraft: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -129,6 +130,62 @@ describe('AgentToolsController', () => {
       }
     });
 
+    journalDraftService.getJournalEntryDraft.mockResolvedValue({
+      organization_id: organizationId,
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      status: 'validated',
+      entry_date: '2026-04-01',
+      memo: 'Utilities accrual',
+      source_type: 'manual_adjustment',
+      source_id: 'request-1',
+      accounting_period_id: 'period-1',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      created_by: {
+        actor_type: 'agent',
+        actor_id: 'test-agent-client',
+        user_id: 'app-user-1'
+      },
+      proposal: {
+        proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+        status: 'needs_review'
+      },
+      validation_summary: {
+        valid: true
+      },
+      metadata: {
+        source: 'test'
+      },
+      lines: [
+        {
+          id: 'line-1',
+          line_number: 1,
+          account_id: '660e8400-e29b-41d4-a716-446655440000',
+          account_code: '5000',
+          account_name: 'Operating Expense',
+          description: null,
+          debit: 100,
+          credit: 0
+        },
+        {
+          id: 'line-2',
+          line_number: 2,
+          account_id: '770e8400-e29b-41d4-a716-446655440000',
+          account_code: '2000',
+          account_name: 'Accounts Payable',
+          description: null,
+          debit: 0,
+          credit: 100
+        }
+      ]
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -209,6 +266,7 @@ describe('AgentToolsController', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'get_health_status' }),
         expect.objectContaining({ name: 'get_trial_balance' }),
+        expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' })
       ])
     );
@@ -363,6 +421,33 @@ describe('AgentToolsController', () => {
       expect.objectContaining({
         draft_number: 'JE-000001',
         proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+      })
+    );
+  });
+
+  it('returns journal entry drafts for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_journal_entry_draft',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getJournalEntryDraft).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        draft_number: 'JE-000001',
+        proposal: expect.objectContaining({
+          proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+        })
       })
     );
   });

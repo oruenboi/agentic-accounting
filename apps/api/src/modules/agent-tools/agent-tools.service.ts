@@ -6,6 +6,7 @@ import type { AuthenticatedActor } from '../auth/authenticated-request.interface
 import { HealthService } from '../health/health.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
+import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ValidateJournalEntryInputDto } from '../journal-tools/dto/validate-journal-entry.dto';
@@ -420,6 +421,57 @@ export class AgentToolsService {
           this.journalValidationService.validateJournalEntry(input as ValidateJournalEntryInputDto, actor),
         summarize: (result) =>
           `Journal entry validation ${(result as { valid: boolean }).valid ? 'passed' : 'failed'} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'get_journal_entry_draft',
+        description: 'Returns a persisted journal draft, its lines, and linked proposal state.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: GetJournalEntryDraftInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'draft_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            draft_id: { type: 'string', format: 'uuid' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'draft_number',
+            'status',
+            'entry_date',
+            'actor_context',
+            'created_by',
+            'validation_summary',
+            'metadata',
+            'lines'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            status: { type: 'string' },
+            entry_date: { type: 'string' },
+            actor_context: { type: 'object' },
+            created_by: { type: 'object' },
+            proposal: { type: 'object' },
+            validation_summary: { type: 'object' },
+            metadata: { type: 'object' },
+            lines: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.getJournalEntryDraft(input as GetJournalEntryDraftInputDto, actor),
+        summarize: (result) =>
+          `Journal draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id} loaded successfully.`
       },
       {
         name: 'create_journal_entry_draft',
