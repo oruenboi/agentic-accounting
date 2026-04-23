@@ -73,6 +73,17 @@ Contains:
 - approve/reject actions
 - approval history timeline
 
+### Proposals
+- `/proposals`
+- `/proposals/:proposalId`
+
+Contains:
+- proposal queue
+- proposal detail
+- linked journal draft inspection
+- provenance and agent-origin labels
+- navigation into approvals and audit
+
 ### Ledger
 - `/ledger`
 - `/ledger/drafts`
@@ -157,10 +168,13 @@ Use drawers for:
 - attachments
 - audit preview
 - agent proposal preview
+- approval preview
+- linked draft preview
 
 ### Detail pages
 Use full detail pages for:
 - approval decisions
+- proposal review
 - posted entries
 - close runs
 - schedule runs
@@ -185,6 +199,10 @@ Nested routes should preserve the parent context and avoid full page reload-styl
 ### Dashboard
 Best for:
 - summary and triage
+
+### Proposals
+Best for:
+- proposal-backed draft discovery and agent-origin review
 
 ### Tasks and Approvals
 Best for:

@@ -4,7 +4,9 @@ Open-source accounting control plane for firms that want multi-company bookkeepi
 
 This repository is currently documentation- and schema-first. The architecture, storage model, workflow model, and OpenClaw integration approach are defined, but the runtime product is still being implemented.
 
-The first runtime slice now exists in `apps/api`: a NestJS-based backend skeleton with Supabase token verification, Postgres access, health checks, and read-only reporting endpoints.
+The first runtime slices now exist in:
+- `apps/api`: a NestJS-based backend with workflow, approval, posting, reversal, audit, and reporting tools
+- `apps/web`: a React operator console for proposals, approvals, posted entries, and audit review
 
 ## Who This Is For
 
@@ -44,9 +46,16 @@ Already defined in this repo:
 Already scaffolded in code:
 - npm workspace root
 - `apps/api` NestJS runtime skeleton
+- `apps/web` React operator console scaffold
 - Supabase-backed auth verification and tenant access checks
 - deterministic minimal tenant bootstrap seed rendering for first usable firm/org/user/account data
 - proposal-style journal draft creation with idempotency replay/conflict handling and linked `agent_proposals`
+- operator UI routes for:
+  - dashboard triage
+  - proposal queue and detail
+  - approval queue and detail
+  - posted journal entry list and detail
+  - entity timeline review
 - Postgres-backed reporting endpoints for:
   - `GET /api/v1/health`
   - `GET /api/v1/reports/trial-balance`
@@ -59,11 +68,10 @@ Already scaffolded in code:
   - `POST /api/v1/agent-tools/execute-batch`
 
 Still to implement:
-- broader backend runtime services
 - non-user client registry and stronger agent auth beyond the current bounded configured-client path
 - schedule runtime and reporting application services
-- fuller idempotency and agent proposal runtime workflows beyond the first journal-draft path
-- full write-path orchestration on top of the existing DB constraints
+- broader operator UI coverage for reports, schedules, close, settings, and tasks
+- fuller audit/event surfacing and operational hardening around the current workflow engine
 
 ## Architecture Summary
 
@@ -131,10 +139,9 @@ The implemented database foundations include:
 ## What Is Planned
 
 The remaining product work is mainly:
-- backend service implementation
-- agent tool execution and auth enforcement
-- reporting SQL views
-- schedule generation and reconciliation runtime
+- broader operator UI implementation
+- reporting and schedule runtime expansion
+- richer audit and policy surfaces
 - public package publishing
 - self-hosted deployment automation
 - OpenClaw host hardening and integration rollout
@@ -206,10 +213,10 @@ This repo is not yet a complete runnable product, so the right first step is to 
 6. `devplan/documentation_inventory_01.md`
 
 If you are here to implement the system, the next practical build order is:
-1. backend runtime
-2. agent tool execution/auth layer
-3. reporting SQL
-4. schedule runtime
+1. operator UI expansion
+2. reporting and schedule runtime
+3. worker/background execution
+4. bootstrap and deployment automation
 5. OpenClaw plugin and host integration
 
 ## Local API Quickstart
@@ -273,6 +280,26 @@ PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p 5432 -U postgres -d postgre
 ```
 
 Once applied, the live API can satisfy tenant-scoped report reads and `validate_journal_entry` calls instead of failing on empty tenant data.
+
+## Local Web Quickstart
+
+The first operator console lives in [apps/web](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\apps\web).
+
+1. Run `npm install`
+2. Run `npm run dev:web`
+3. Open the Vite URL shown in the terminal
+4. Paste:
+   - API base URL, for example `https://api.nexiuslabs.com`
+   - a valid Supabase bearer token
+   - an organization ID
+   - optionally a period ID
+
+The current console supports:
+- dashboard triage cards
+- proposal queue and proposal detail with linked draft inspection
+- approval queue and approval detail with approve, reject, and escalate controls
+- posted journal entry list/detail
+- entity audit timeline review
 
 ## Status Notes
 

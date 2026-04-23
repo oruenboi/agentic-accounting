@@ -111,7 +111,7 @@ Can access:
 ### P0 screens
 1. Dashboard
 2. Approvals
-3. Ledger drafts and posted entries
+3. Proposals, ledger drafts, and posted entries
 4. Reports
 5. Schedules
 6. Close
@@ -132,14 +132,15 @@ Can access:
 ## Build Order Recommendation
 1. App shell and context selector
 2. Dashboard
-3. Approvals
-4. Ledger draft and posting views
-5. Reports
-6. Schedules
-7. Close
-8. Audit
-9. Tasks
-10. Settings
+3. Proposals
+4. Approvals
+5. Ledger draft and posting views
+6. Audit
+7. Reports
+8. Schedules
+9. Close
+10. Tasks
+11. Settings
 
 This order keeps the console focused on the highest-control surfaces first.
 

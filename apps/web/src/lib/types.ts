@@ -1,0 +1,149 @@
+export interface ActorContext {
+  appUserId?: string | null;
+  authUserId?: string | null;
+  organizationRole?: string | null;
+  firmRole?: string | null;
+  firmId?: string | null;
+}
+
+export interface ProposalSummary {
+  proposalId: string;
+  organizationId: string;
+  draftId: string | null;
+  draftNumber: string | null;
+  status: string;
+  proposalType: string;
+  title: string | null;
+  createdAt: string | null;
+}
+
+export interface ProposalDetail extends ProposalSummary {
+  description: string | null;
+  payload: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  target: {
+    entityType: string | null;
+    entityId: string | null;
+    draftNumber: string | null;
+    draftStatus: string | null;
+  };
+  actorContext?: ActorContext;
+}
+
+export interface JournalDraftDetail {
+  draftId: string;
+  draftNumber: string | null;
+  organizationId: string;
+  status: string;
+  memo: string | null;
+  entryDate: string;
+  sourceType: string;
+  proposalId: string | null;
+  proposalStatus: string | null;
+  validationSummary: Record<string, unknown> | null;
+  lines: Array<{
+    id: string;
+    lineNumber: number;
+    accountId: string;
+    accountCode: string | null;
+    accountName: string | null;
+    description: string | null;
+    debit: string | number;
+    credit: string | number;
+  }>;
+  actorContext?: ActorContext;
+}
+
+export interface ApprovalRequestSummary {
+  approvalRequestId: string;
+  organizationId: string;
+  targetEntityType: string | null;
+  targetEntityId: string | null;
+  draftNumber: string | null;
+  title: string | null;
+  status: string;
+  priority: string | null;
+  currentApproverUserId: string | null;
+  submittedAt: string | null;
+}
+
+export interface ApprovalAction {
+  actionId: string;
+  action: string;
+  actorType: string | null;
+  actorUserId: string | null;
+  reason: string | null;
+  occurredAt: string | null;
+}
+
+export interface ApprovalRequestDetail extends ApprovalRequestSummary {
+  proposalId: string | null;
+  draftId: string | null;
+  draftStatus: string | null;
+  approvalStatus: string;
+  policySnapshot: Record<string, unknown> | null;
+  actionHistory: ApprovalAction[];
+  actorContext?: ActorContext;
+}
+
+export interface JournalEntrySummary {
+  journalEntryId: string;
+  organizationId: string;
+  entryNumber: string | null;
+  entryDate: string;
+  status: string;
+  sourceType: string | null;
+  memo: string | null;
+  reversalJournalEntryId: string | null;
+  postedAt: string | null;
+}
+
+export interface JournalEntryDetail extends JournalEntrySummary {
+  postedByUserId: string | null;
+  linkedProposalId: string | null;
+  reversedByJournalEntryId: string | null;
+  reversalDate: string | null;
+  reversalReason: string | null;
+  lines: Array<{
+    id: string;
+    lineNumber: number;
+    accountId: string;
+    accountCode: string | null;
+    accountName: string | null;
+    description: string | null;
+    debit: string | number;
+    credit: string | number;
+  }>;
+  actorContext?: ActorContext;
+}
+
+export interface AuditEvent {
+  eventId: string;
+  source: string;
+  eventName: string;
+  eventTimestamp: string;
+  summary: string | null;
+  actionStatus: string | null;
+  requestId: string | null;
+  correlationId: string | null;
+  metadata: Record<string, unknown> | null;
+  actor: {
+    actorType: string | null;
+    actorId: string | null;
+    actorDisplayName: string | null;
+    userId: string | null;
+  };
+  entity: {
+    entityType: string | null;
+    entityId: string | null;
+    parentEntityType: string | null;
+    parentEntityId: string | null;
+  };
+}
+
+export interface DashboardSnapshot {
+  openProposals: ProposalSummary[];
+  pendingApprovals: ApprovalRequestSummary[];
+  assignedApprovals: ApprovalRequestSummary[];
+  recentEntries: JournalEntrySummary[];
+}

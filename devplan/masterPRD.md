@@ -1,7 +1,7 @@
 ---
 owner: Codex
 status: in_progress
-last_reviewed: 2026-04-02
+last_reviewed: 2026-04-23
 ---
 
 # Master PRD
@@ -10,8 +10,8 @@ last_reviewed: 2026-04-02
 Build a multi-tenant, agent-enabled accounting platform for accounting-firm operations.
 
 ## Current Focus
-- Establish the foundational backend architecture.
-- Define storage, auditability, approvals, and agent-safe API boundaries.
+- Deliver the first operator UI runtime over the live backend workflow surface.
+- Keep storage, auditability, approvals, and agent-safe API boundaries aligned with the operator experience.
 
 ## Clarifications
-- TODO(Owner: Codex, Due: 2026-04-02): Confirm Supabase migration naming and extension conventions once the broader schema scaffold is created.
+- Decision (2026-04-23): Use timestamp-prefixed SQL migrations under `infra/supabase/migrations/` with explicit constraint and function names; rely only on Supabase-supported defaults already used by the repo, including `gen_random_uuid()`.
