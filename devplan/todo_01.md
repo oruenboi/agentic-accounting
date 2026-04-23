@@ -120,3 +120,4 @@ last_reviewed: 2026-04-23
 - [x] Add deterministic approval routing on draft submission/resubmission so `approval_requests.current_approver_user_id` and `policy_snapshot` are populated from active org/firm membership fallback rules.
 - [x] Tighten approval resolution so pending requests can only be resolved by the assigned approver or an authorized firm-level override actor, with explicit policy errors otherwise.
 - [x] Add tenant-scoped approval queue tools for assigned approvals and escalation/reassignment, plus automated tests for routing, escalation, assignee enforcement, and delegated tenant access before exposing them live.
+- [x] Add a follow-up migration for `approval_actions.action` so live databases accept `escalated` approval events introduced by the approval-routing slice.
