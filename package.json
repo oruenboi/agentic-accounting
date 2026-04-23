@@ -9,8 +9,8 @@
   "scripts": {
     "bootstrap": "npm install --workspaces --include-workspace-root",
     "build:api": "npm run build --workspace @agentic-accounting/api",
+    "test:api": "npm run test --workspace @agentic-accounting/api",
     "dev:api": "npm run start:dev --workspace @agentic-accounting/api",
     "start:api": "npm run start --workspace @agentic-accounting/api"
   }
 }
-
