@@ -816,9 +816,26 @@ describe('JournalDraftService', () => {
       .mockResolvedValueOnce({
         rows: [
           {
+            user_id: 'approver-1',
+            role: 'reviewer',
+            scope: 'organization',
+            rank: 1
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
             approval_request_id: 'approval-1',
             status: 'pending',
             priority: 'high',
+            current_approver_user_id: 'approver-1',
+            policy_snapshot: {
+              route_status: 'assigned',
+              assigned_approver_user_id: 'approver-1',
+              assigned_role: 'reviewer',
+              assigned_scope: 'organization'
+            },
             created_at: '2026-04-23T10:00:00.000Z'
           }
         ]
@@ -857,10 +874,11 @@ describe('JournalDraftService', () => {
         status: 'pending_approval',
         approval_status: 'pending',
         requires_approval: true,
-        priority: 'high'
+        priority: 'high',
+        current_approver_user_id: 'approver-1'
       })
     );
-    expect(query).toHaveBeenCalledTimes(8);
+    expect(query).toHaveBeenCalledTimes(9);
   });
 
   it('reworks a rejected draft back to validated state and replaces its lines', async () => {
@@ -1031,9 +1049,27 @@ describe('JournalDraftService', () => {
       .mockResolvedValueOnce({
         rows: [
           {
+            user_id: 'approver-2',
+            role: 'firm_owner',
+            scope: 'firm',
+            rank: 3
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
             approval_request_id: 'approval-2',
             status: 'pending',
             priority: 'high',
+            current_approver_user_id: 'approver-2',
+            policy_snapshot: {
+              route_status: 'assigned',
+              assigned_approver_user_id: 'approver-2',
+              assigned_role: 'firm_owner',
+              assigned_scope: 'firm',
+              fallback_used: true
+            },
             created_at: '2026-04-23T12:30:00.000Z'
           }
         ]
@@ -1070,10 +1106,11 @@ describe('JournalDraftService', () => {
         approval_request_id: 'approval-2',
         status: 'pending_approval',
         approval_status: 'pending',
-        priority: 'high'
+        priority: 'high',
+        current_approver_user_id: 'approver-2'
       })
     );
-    expect(query).toHaveBeenCalledTimes(8);
+    expect(query).toHaveBeenCalledTimes(9);
   });
 
   it('rejects resubmission when the draft is not in validated state with a prior rejected approval', async () => {
@@ -1226,6 +1263,59 @@ describe('JournalDraftService', () => {
     ]);
   });
 
+  it('lists approval requests assigned to the delegated actor', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          approval_request_id: 'approval-1',
+          status: 'pending',
+          priority: 'high',
+          action_type: 'ledger.journal_draft.submitted_for_approval',
+          target_entity_type: 'journal_entry_draft',
+          target_entity_id: 'draft-1',
+          submitted_at: '2026-04-23T10:00:00.000Z',
+          submitted_by_actor_type: 'agent',
+          submitted_by_actor_id: 'test-agent-client',
+          submitted_by_user_id: actorContext.appUserId,
+          current_approver_user_id: actorContext.appUserId,
+          expires_at: null,
+          resolved_at: null,
+          resolved_by_user_id: null,
+          resolution_reason: null,
+          policy_snapshot: {
+            route_status: 'assigned'
+          },
+          metadata: {},
+          draft_number: 'JE-000001',
+          draft_status: 'pending_approval',
+          proposal_id: 'proposal-1',
+          proposal_status: 'pending_approval'
+        }
+      ]
+    });
+
+    const result = await service.listAssignedApprovalRequests(
+      {
+        organization_id: input.organization_id
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        assigned_user_id: actorContext.appUserId,
+        filters: { status: 'pending', limit: 20 }
+      })
+    );
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'approval-1',
+        current_approver_user_id: actorContext.appUserId
+      })
+    );
+  });
+
   it('returns one approval request with action history', async () => {
     tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
     databaseService.query
@@ -1293,6 +1383,87 @@ describe('JournalDraftService', () => {
       })
     );
     expect(result.actions).toHaveLength(1);
+  });
+
+  it('escalates a pending approval request to a firm-level fallback reviewer', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'pending',
+            priority: 'high',
+            action_type: 'ledger.journal_draft.submitted_for_approval',
+            target_entity_type: 'journal_entry_draft',
+            target_entity_id: 'draft-1',
+            submitted_at: '2026-04-23T10:00:00.000Z',
+            submitted_by_actor_type: 'agent',
+            submitted_by_actor_id: 'test-agent-client',
+            submitted_by_user_id: 'submitter-1',
+            current_approver_user_id: 'reviewer-1',
+            expires_at: null,
+            resolved_at: null,
+            resolved_by_user_id: null,
+            resolution_reason: null,
+            policy_snapshot: {
+              route_status: 'assigned',
+              assigned_approver_user_id: 'reviewer-1'
+            },
+            metadata: {},
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: 'proposal-1',
+            proposal_status: 'pending_approval'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            user_id: 'firm-owner-1',
+            role: 'firm_owner',
+            scope: 'firm',
+            rank: 1
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.escalateApprovalRequest(
+      {
+        organization_id: input.organization_id,
+        approval_request_id: 'approval-1',
+        reason: 'Primary reviewer unavailable'
+      },
+      actor,
+      {
+        requestId: 'request-8',
+        correlationId: 'corr-8',
+        idempotencyKey: 'idem-escalate-1',
+        toolName: 'escalate_approval_request'
+      }
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'approval-1',
+        previous_approver_user_id: 'reviewer-1',
+        current_approver_user_id: 'firm-owner-1',
+        escalation_reason: 'Primary reviewer unavailable'
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(7);
   });
 
   it('resolves a pending approval request and updates linked draft and proposal state', async () => {
@@ -1423,6 +1594,70 @@ describe('JournalDraftService', () => {
       )
     ).rejects.toMatchObject({
       code: 'APPROVAL_REQUEST_INVALID_STATE'
+    });
+  });
+
+  it('rejects approval resolution when the current actor is not the assigned approver and lacks firm override access', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue({
+      ...actorContext,
+      firmRole: 'firm_staff'
+    });
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-1',
+            status: 'pending',
+            priority: 'high',
+            action_type: 'ledger.journal_draft.submitted_for_approval',
+            target_entity_type: 'journal_entry_draft',
+            target_entity_id: 'draft-1',
+            submitted_at: '2026-04-23T10:00:00.000Z',
+            submitted_by_actor_type: 'agent',
+            submitted_by_actor_id: 'test-agent-client',
+            submitted_by_user_id: actorContext.appUserId,
+            current_approver_user_id: 'another-approver',
+            expires_at: null,
+            resolved_at: null,
+            resolved_by_user_id: null,
+            resolution_reason: null,
+            policy_snapshot: {
+              route_status: 'assigned'
+            },
+            metadata: {},
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: 'proposal-1',
+            proposal_status: 'pending_approval'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.resolveApprovalRequest(
+        {
+          organization_id: input.organization_id,
+          approval_request_id: 'approval-1',
+          resolution: 'approved'
+        },
+        actor,
+        {
+          requestId: 'request-3',
+          correlationId: 'corr-3',
+          idempotencyKey: 'idem-resolve-1',
+          toolName: 'resolve_approval_request'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'APPROVAL_ASSIGNMENT_REQUIRED'
     });
   });
 

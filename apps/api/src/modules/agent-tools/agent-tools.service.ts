@@ -6,6 +6,7 @@ import type { AuthenticatedActor } from '../auth/authenticated-request.interface
 import { HealthService } from '../health/health.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
+import { EscalateApprovalRequestInputDto } from '../journal-tools/dto/escalate-approval-request.dto';
 import { GetApprovalRequestInputDto } from '../journal-tools/dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from '../journal-tools/dto/get-agent-proposal.dto';
 import { GetEntityTimelineInputDto } from '../journal-tools/dto/get-entity-timeline.dto';
@@ -14,6 +15,7 @@ import { GetJournalEntryReversalChainInputDto } from '../journal-tools/dto/get-j
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListAuditEventsInputDto } from '../journal-tools/dto/list-audit-events.dto';
+import { ListAssignedApprovalRequestsInputDto } from '../journal-tools/dto/list-assigned-approval-requests.dto';
 import { ListApprovalRequestsInputDto } from '../journal-tools/dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
 import { ListJournalEntriesInputDto } from '../journal-tools/dto/list-journal-entries.dto';
@@ -470,6 +472,41 @@ export class AgentToolsService {
           this.journalDraftService.listApprovalRequests(input as ListApprovalRequestsInputDto, actor),
         summarize: (result) =>
           `Approval request listing returned ${this.countItems(result)} item(s) for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'list_assigned_approval_requests',
+        description: 'Returns approval requests currently assigned to the delegated actor for one organization.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ListAssignedApprovalRequestsInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'cancelled', 'expired'] },
+            limit: { type: 'number' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'actor_context', 'assigned_user_id', 'filters', 'items'],
+          properties: {
+            organization_id: { type: 'string' },
+            actor_context: { type: 'object' },
+            assigned_user_id: { type: 'string', format: 'uuid' },
+            filters: { type: 'object' },
+            items: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.listAssignedApprovalRequests(input as ListAssignedApprovalRequestsInputDto, actor),
+        summarize: (result) =>
+          `Assigned approval request listing returned ${this.countItems(result)} item(s) for actor ${(result as { assigned_user_id: string }).assigned_user_id}.`
       },
       {
         name: 'get_approval_request',
@@ -1208,6 +1245,8 @@ export class AgentToolsService {
             approval_status: { type: 'string' },
             requires_approval: { type: 'boolean' },
             priority: { type: 'string' },
+            current_approver_user_id: { type: 'string', format: 'uuid' },
+            policy_snapshot: { type: 'object' },
             submitted_at: { type: 'string' }
           }
         },
@@ -1296,6 +1335,66 @@ export class AgentToolsService {
           `Approval request ${(result as { approval_request_id: string }).approval_request_id} resolved as ${(result as { status: string }).status}.`
       },
       {
+        name: 'escalate_approval_request',
+        description: 'Escalates a pending approval request to a higher-priority fallback approver without mutating the underlying accounting payload.',
+        category: 'workflow',
+        mutability: 'proposal',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: EscalateApprovalRequestInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'approval_request_id', 'reason'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            approval_request_id: { type: 'string', format: 'uuid' },
+            reason: { type: 'string' },
+            comments: { type: 'string' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'approval_request_id',
+            'actor_context',
+            'status',
+            'current_approver_user_id',
+            'policy_snapshot'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            approval_request_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            previous_approver_user_id: { type: 'string', format: 'uuid' },
+            current_approver_user_id: { type: 'string', format: 'uuid' },
+            escalation_reason: { type: 'string' },
+            policy_snapshot: { type: 'object' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.escalateApprovalRequest(
+            input as EscalateApprovalRequestInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Approval request ${(result as { approval_request_id: string }).approval_request_id} escalated to approver ${(result as { current_approver_user_id: string | null }).current_approver_user_id ?? 'unassigned'}.`
+      },
+      {
         name: 'submit_journal_entry_draft_for_approval',
         description: 'Submits a validated journal draft into approval workflow and links its approval request.',
         category: 'workflow',
@@ -1339,6 +1438,8 @@ export class AgentToolsService {
             approval_status: { type: 'string' },
             requires_approval: { type: 'boolean' },
             priority: { type: 'string' },
+            current_approver_user_id: { type: 'string', format: 'uuid' },
+            policy_snapshot: { type: 'object' },
             submitted_at: { type: 'string' }
           }
         },

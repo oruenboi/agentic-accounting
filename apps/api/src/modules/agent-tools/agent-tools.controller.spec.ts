@@ -46,7 +46,9 @@ describe('AgentToolsController', () => {
     submitJournalEntryDraftForApproval: jest.fn(),
     resubmitJournalEntryDraftForApproval: jest.fn(),
     listApprovalRequests: jest.fn(),
+    listAssignedApprovalRequests: jest.fn(),
     getApprovalRequest: jest.fn(),
+    escalateApprovalRequest: jest.fn(),
     resolveApprovalRequest: jest.fn(),
     postApprovedJournalEntry: jest.fn(),
     reversePostedJournalEntry: jest.fn()
@@ -563,6 +565,11 @@ describe('AgentToolsController', () => {
       approval_status: 'pending',
       requires_approval: true,
       priority: 'high',
+      current_approver_user_id: 'approver-1',
+      policy_snapshot: {
+        route_status: 'assigned',
+        assigned_approver_user_id: 'approver-1'
+      },
       submitted_at: '2026-04-23T10:00:00.000Z'
     });
 
@@ -583,6 +590,12 @@ describe('AgentToolsController', () => {
       approval_status: 'pending',
       requires_approval: true,
       priority: 'high',
+      current_approver_user_id: 'approver-2',
+      policy_snapshot: {
+        route_status: 'assigned',
+        assigned_approver_user_id: 'approver-2',
+        assigned_scope: 'firm'
+      },
       submitted_at: '2026-04-23T12:30:00.000Z'
     });
 
@@ -619,11 +632,63 @@ describe('AgentToolsController', () => {
             proposal_id: '990e8400-e29b-41d4-a716-446655440000',
             proposal_status: 'pending_approval'
           },
-          current_approver_user_id: null,
+          current_approver_user_id: 'approver-1',
           expires_at: null,
           resolved_at: null,
           resolved_by_user_id: null,
           resolution_reason: null,
+          policy_snapshot: {
+            route_status: 'assigned',
+            assigned_approver_user_id: 'approver-1'
+          },
+          metadata: {}
+        }
+      ]
+    });
+
+    journalDraftService.listAssignedApprovalRequests.mockResolvedValue({
+      organization_id: organizationId,
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      assigned_user_id: 'app-user-1',
+      filters: {
+        status: 'pending',
+        limit: 20
+      },
+      items: [
+        {
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          status: 'pending',
+          priority: 'high',
+          action_type: 'ledger.journal_draft.submitted_for_approval',
+          submitted_at: '2026-04-23T10:00:00.000Z',
+          submitted_by: {
+            actor_type: 'agent',
+            actor_id: 'test-agent-client',
+            user_id: 'app-user-1'
+          },
+          target: {
+            entity_type: 'journal_entry_draft',
+            entity_id: '880e8400-e29b-41d4-a716-446655440000',
+            draft_number: 'JE-000001',
+            draft_status: 'pending_approval',
+            proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+            proposal_status: 'pending_approval'
+          },
+          current_approver_user_id: 'app-user-1',
+          expires_at: null,
+          resolved_at: null,
+          resolved_by_user_id: null,
+          resolution_reason: null,
+          policy_snapshot: {
+            route_status: 'assigned',
+            assigned_approver_user_id: 'app-user-1'
+          },
           metadata: {}
         }
       ]
@@ -656,11 +721,15 @@ describe('AgentToolsController', () => {
         proposal_id: '990e8400-e29b-41d4-a716-446655440000',
         proposal_status: 'pending_approval'
       },
-      current_approver_user_id: null,
+      current_approver_user_id: 'approver-1',
       expires_at: null,
       resolved_at: null,
       resolved_by_user_id: null,
       resolution_reason: null,
+      policy_snapshot: {
+        route_status: 'assigned',
+        assigned_approver_user_id: 'approver-1'
+      },
       metadata: {},
       actions: [
         {
@@ -699,6 +768,27 @@ describe('AgentToolsController', () => {
       proposal_status: 'approved',
       resolved_at: '2026-04-23T11:00:00.000Z',
       resolution_reason: 'Threshold review complete'
+    });
+
+    journalDraftService.escalateApprovalRequest.mockResolvedValue({
+      organization_id: organizationId,
+      approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'pending',
+      previous_approver_user_id: 'approver-1',
+      current_approver_user_id: 'approver-2',
+      escalation_reason: 'Primary reviewer unavailable',
+      policy_snapshot: {
+        route_status: 'assigned',
+        assigned_approver_user_id: 'approver-2',
+        escalation_count: 1
+      }
     });
 
     journalDraftService.postApprovedJournalEntry.mockResolvedValue({
@@ -831,12 +921,14 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'get_journal_entry_reversal_chain' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'list_audit_events' }),
+        expect.objectContaining({ name: 'list_assigned_approval_requests' }),
         expect.objectContaining({ name: 'list_approval_requests' }),
         expect.objectContaining({ name: 'list_journal_entries' }),
         expect.objectContaining({ name: 'post_approved_journal_entry' }),
         expect.objectContaining({ name: 'rework_rejected_journal_entry_draft' }),
         expect.objectContaining({ name: 'reverse_posted_journal_entry' }),
         expect.objectContaining({ name: 'resubmit_journal_entry_draft_for_approval' }),
+        expect.objectContaining({ name: 'escalate_approval_request' }),
         expect.objectContaining({ name: 'resolve_approval_request' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' }),
@@ -1298,6 +1390,35 @@ describe('AgentToolsController', () => {
     );
   });
 
+  it('lists approval requests assigned to the delegated actor', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'list_assigned_approval_requests',
+        input: {
+          organization_id: organizationId
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.listAssignedApprovalRequests).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        assigned_user_id: 'app-user-1',
+        items: [
+          expect.objectContaining({
+            approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+            current_approver_user_id: 'app-user-1'
+          })
+        ]
+      })
+    );
+  });
+
   it('returns one approval request for delegated agent callers', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/v1/agent-tools/execute')
@@ -1353,6 +1474,34 @@ describe('AgentToolsController', () => {
     );
   });
 
+  it('escalates approval requests for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'escalate_approval_request',
+        idempotency_key: 'idem-escalate-approval-request',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          reason: 'Primary reviewer unavailable'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.escalateApprovalRequest).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+        previous_approver_user_id: 'approver-1',
+        current_approver_user_id: 'approver-2'
+      })
+    );
+  });
+
   it('returns invalid state errors when approval resolution is attempted for an ineligible request', async () => {
     journalDraftService.resolveApprovalRequest.mockRejectedValueOnce(
       new AppError(
@@ -1381,6 +1530,38 @@ describe('AgentToolsController', () => {
     expect(response.body.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: 'APPROVAL_REQUEST_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('returns assignment errors when approval resolution is attempted by a non-assigned actor', async () => {
+    journalDraftService.resolveApprovalRequest.mockRejectedValueOnce(
+      new AppError(
+        'APPROVAL_ASSIGNMENT_REQUIRED',
+        'Approval request aa0e8400-e29b-41d4-a716-446655440000 is assigned to another approver and cannot be resolved by the current actor.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resolve_approval_request',
+        idempotency_key: 'idem-resolve-approval-request-assignment',
+        input: {
+          organization_id: organizationId,
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          resolution: 'approved'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'APPROVAL_ASSIGNMENT_REQUIRED' })
       ])
     );
   });
