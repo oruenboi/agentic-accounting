@@ -17,6 +17,8 @@ import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
 import { ListJournalEntriesInputDto } from './dto/list-journal-entries.dto';
 import { PostApprovedJournalEntryInputDto } from './dto/post-approved-journal-entry.dto';
 import { ReversePostedJournalEntryInputDto } from './dto/reverse-posted-journal-entry.dto';
+import { ResubmitJournalEntryDraftForApprovalInputDto } from './dto/resubmit-journal-entry-draft-for-approval.dto';
+import { ReworkRejectedJournalEntryDraftInputDto } from './dto/rework-rejected-journal-entry-draft.dto';
 import { ResolveApprovalRequestInputDto } from './dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from './dto/submit-journal-entry-draft-for-approval.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
@@ -129,6 +131,12 @@ interface DraftApprovalRow {
   validation_summary: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
   proposal_id: string | null;
+}
+
+interface DraftApprovalWorkflowRow extends DraftApprovalRow {
+  approval_request_id: string | null;
+  approval_status: string | null;
+  proposal_status: string | null;
 }
 
 interface ApprovalRequestInsertRow {
@@ -689,6 +697,251 @@ export class JournalDraftService {
     };
   }
 
+  async reworkRejectedJournalEntryDraft(
+    input: ReworkRejectedJournalEntryDraftInputDto,
+    actor: AuthenticatedActor,
+    context: ToolRequestContext
+  ) {
+    const validation = await this.journalValidationService.validateJournalEntry(input, actor);
+
+    if (!validation.valid) {
+      throw new AppError(
+        'JOURNAL_ENTRY_INVALID',
+        validation.errors.map((error) => error.message).join('; ') || 'Journal entry validation failed.'
+      );
+    }
+
+    const actorContext = validation.actor_context;
+    const requestHash = this.hashRequestPayload(input);
+    const actorType = actor.actorType;
+    const actorId = this.resolveActorId(actor);
+
+    return this.databaseService.withTransaction(async (client) => {
+      const existing = await this.loadIdempotencyRecord(
+        client,
+        actorContext.firmId,
+        input.organization_id,
+        actorType,
+        actorId,
+        context.idempotencyKey,
+        context.toolName
+      );
+
+      if (existing !== null) {
+        if (existing.request_hash !== requestHash) {
+          throw new AppError(
+            'IDEMPOTENCY_CONFLICT',
+            'The supplied idempotency_key was already used with a different rework_rejected_journal_entry_draft payload.'
+          );
+        }
+
+        if (existing.status === 'succeeded' && existing.response_body !== null) {
+          return existing.response_body;
+        }
+
+        throw new AppError(
+          'IDEMPOTENCY_CONFLICT',
+          `The supplied idempotency_key is already reserved for rework_rejected_journal_entry_draft with status ${existing.status}.`
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.idempotency_keys (
+            firm_id,
+            organization_id,
+            actor_type,
+            actor_id,
+            request_id,
+            idempotency_key,
+            operation_name,
+            request_hash,
+            normalized_payload,
+            status
+          )
+          values ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending')
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.requestId,
+          context.idempotencyKey,
+          context.toolName,
+          requestHash,
+          JSON.stringify(this.normalizePayload(input))
+        ]
+      );
+
+      const draftResult = await client.query<DraftApprovalWorkflowRow>(
+        `
+          select
+            d.id::text as draft_id,
+            d.draft_number,
+            d.status,
+            d.entry_date::text,
+            d.memo,
+            d.accounting_period_id::text,
+            d.validation_summary,
+            d.metadata,
+            ap.id::text as proposal_id,
+            d.approval_request_id::text,
+            ar.status as approval_status,
+            ap.status as proposal_status
+          from public.journal_entry_drafts d
+          left join public.approval_requests ar
+            on ar.id = d.approval_request_id
+          left join public.agent_proposals ap
+            on ap.target_entity_type = 'journal_entry_draft'
+           and ap.target_entity_id = d.id
+          where d.id = $1::uuid
+            and d.organization_id = $2::uuid
+          order by ap.created_at desc nulls last
+          limit 1
+        `,
+        [input.draft_id, input.organization_id]
+      );
+
+      const draft = draftResult.rows[0];
+
+      if (draft === undefined) {
+        throw new AppError(
+          'DRAFT_NOT_FOUND',
+          `Journal draft ${input.draft_id} was not found for organization ${input.organization_id}.`
+        );
+      }
+
+      if (draft.status !== 'rejected') {
+        throw new AppError(
+          'DRAFT_REWORK_INVALID_STATE',
+          `Journal draft ${input.draft_id} must be in rejected status before it can be reworked.`
+        );
+      }
+
+      await client.query(
+        `
+          update public.journal_entry_drafts
+          set
+            accounting_period_id = $1::uuid,
+            entry_date = $2::date,
+            memo = $3,
+            source_type = $4,
+            status = 'validated',
+            submitted_at = null,
+            submitted_by_actor_type = null,
+            submitted_by_actor_id = null,
+            approved_at = null,
+            approved_by_user_id = null,
+            rejection_reason = null,
+            validation_summary = $5::jsonb,
+            metadata = $6::jsonb,
+            updated_at = now()
+          where id = $7::uuid
+        `,
+        [
+          input.accounting_period_id ?? validation.validation_result.period?.id ?? null,
+          input.entry_date,
+          input.memo ?? null,
+          input.source_type,
+          JSON.stringify({
+            valid: validation.valid,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            validation_result: validation.validation_result
+          }),
+          JSON.stringify(input.metadata ?? {}),
+          input.draft_id
+        ]
+      );
+
+      await client.query(
+        `
+          delete from public.journal_entry_draft_lines
+          where draft_id = $1::uuid
+        `,
+        [input.draft_id]
+      );
+
+      await this.insertDraftLines(client, input.draft_id, input.lines);
+
+      if (draft.proposal_id !== null) {
+        await client.query(
+          `
+            update public.agent_proposals
+            set
+              status = 'needs_review',
+              payload = $1::jsonb,
+              metadata = $2::jsonb,
+              updated_at = now()
+            where id = $3::uuid
+          `,
+          [
+            JSON.stringify({
+              draft_id: input.draft_id,
+              draft_number: draft.draft_number,
+              entry_date: input.entry_date,
+              memo: input.memo ?? null,
+              source_type: input.source_type,
+              lines: input.lines
+            }),
+            JSON.stringify({
+              impact_preview: validation.impact_preview,
+              validation_result: validation.validation_result,
+              warnings: validation.warnings
+            }),
+            draft.proposal_id
+          ]
+        );
+      }
+
+      const response = {
+        organization_id: input.organization_id,
+        draft_id: input.draft_id,
+        draft_number: draft.draft_number,
+        proposal_id: draft.proposal_id,
+        actor_context: actorContext,
+        status: 'validated',
+        requires_approval: false,
+        entry_date: input.entry_date,
+        line_count: input.lines.length,
+        validation_result: validation.validation_result,
+        impact_preview: validation.impact_preview
+      };
+
+      await client.query(
+        `
+          update public.idempotency_keys
+          set
+            status = 'succeeded',
+            resource_type = 'journal_entry_draft',
+            resource_id = $1,
+            response_code = 201,
+            response_body = $2::jsonb,
+            last_seen_at = now()
+          where firm_id = $3::uuid
+            and organization_id = $4::uuid
+            and actor_type = $5
+            and actor_id = $6
+            and idempotency_key = $7
+            and operation_name = $8
+        `,
+        [
+          input.draft_id,
+          JSON.stringify(response),
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.idempotencyKey,
+          context.toolName
+        ]
+      );
+
+      return response;
+    });
+  }
+
   async listAgentProposals(input: ListAgentProposalsInputDto, actor: AuthenticatedActor) {
     const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
     const limit = input.limit ?? 20;
@@ -1100,6 +1353,319 @@ export class JournalDraftService {
       const response = {
         organization_id: input.organization_id,
         draft_id: draft.draft_id,
+        draft_number: draft.draft_number,
+        proposal_id: draft.proposal_id,
+        approval_request_id: approvalRequest.approval_request_id,
+        actor_context: actorContext,
+        status: 'pending_approval',
+        approval_status: approvalRequest.status,
+        requires_approval: true,
+        priority: approvalRequest.priority,
+        submitted_at: approvalRequest.created_at
+      };
+
+      await client.query(
+        `
+          update public.idempotency_keys
+          set
+            status = 'succeeded',
+            resource_type = 'approval_request',
+            resource_id = $1,
+            response_code = 201,
+            response_body = $2::jsonb,
+            last_seen_at = now()
+          where firm_id = $3::uuid
+            and organization_id = $4::uuid
+            and actor_type = $5
+            and actor_id = $6
+            and idempotency_key = $7
+            and operation_name = $8
+        `,
+        [
+          approvalRequest.approval_request_id,
+          JSON.stringify(response),
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.idempotencyKey,
+          context.toolName
+        ]
+      );
+
+      return response;
+    });
+  }
+
+  async resubmitJournalEntryDraftForApproval(
+    input: ResubmitJournalEntryDraftForApprovalInputDto,
+    actor: AuthenticatedActor,
+    context: ToolRequestContext
+  ) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const requestHash = this.hashRequestPayload(input);
+    const actorType = actor.actorType;
+    const actorId = this.resolveActorId(actor);
+
+    return this.databaseService.withTransaction(async (client) => {
+      const existing = await this.loadIdempotencyRecord(
+        client,
+        actorContext.firmId,
+        input.organization_id,
+        actorType,
+        actorId,
+        context.idempotencyKey,
+        context.toolName
+      );
+
+      if (existing !== null) {
+        if (existing.request_hash !== requestHash) {
+          throw new AppError(
+            'IDEMPOTENCY_CONFLICT',
+            'The supplied idempotency_key was already used with a different resubmit_journal_entry_draft_for_approval payload.'
+          );
+        }
+
+        if (existing.status === 'succeeded' && existing.response_body !== null) {
+          return existing.response_body;
+        }
+
+        throw new AppError(
+          'IDEMPOTENCY_CONFLICT',
+          `The supplied idempotency_key is already reserved for resubmit_journal_entry_draft_for_approval with status ${existing.status}.`
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.idempotency_keys (
+            firm_id,
+            organization_id,
+            actor_type,
+            actor_id,
+            request_id,
+            idempotency_key,
+            operation_name,
+            request_hash,
+            normalized_payload,
+            status
+          )
+          values ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending')
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.requestId,
+          context.idempotencyKey,
+          context.toolName,
+          requestHash,
+          JSON.stringify(this.normalizePayload(input))
+        ]
+      );
+
+      const draftResult = await client.query<DraftApprovalWorkflowRow>(
+        `
+          select
+            d.id::text as draft_id,
+            d.draft_number,
+            d.status,
+            d.entry_date::text,
+            d.memo,
+            d.accounting_period_id::text,
+            d.validation_summary,
+            d.metadata,
+            ap.id::text as proposal_id,
+            d.approval_request_id::text,
+            ar.status as approval_status,
+            ap.status as proposal_status
+          from public.journal_entry_drafts d
+          left join public.approval_requests ar
+            on ar.id = d.approval_request_id
+          left join public.agent_proposals ap
+            on ap.target_entity_type = 'journal_entry_draft'
+           and ap.target_entity_id = d.id
+          where d.id = $1::uuid
+            and d.organization_id = $2::uuid
+          order by ap.created_at desc nulls last
+          limit 1
+        `,
+        [input.draft_id, input.organization_id]
+      );
+
+      const draft = draftResult.rows[0];
+
+      if (draft === undefined) {
+        throw new AppError(
+          'DRAFT_NOT_FOUND',
+          `Journal draft ${input.draft_id} was not found for organization ${input.organization_id}.`
+        );
+      }
+
+      if (draft.status !== 'validated') {
+        throw new AppError(
+          'DRAFT_RESUBMISSION_INVALID_STATE',
+          `Journal draft ${input.draft_id} must be in validated status before it can be resubmitted for approval.`
+        );
+      }
+
+      if (draft.approval_request_id === null || !['rejected', 'expired', 'cancelled'].includes(draft.approval_status ?? '')) {
+        throw new AppError(
+          'DRAFT_RESUBMISSION_INVALID_STATE',
+          `Journal draft ${input.draft_id} must have a previously rejected, expired, or cancelled approval request before it can be resubmitted.`
+        );
+      }
+
+      const priority = input.priority ?? 'normal';
+      const actionType = 'ledger.journal_draft.resubmitted_for_approval';
+
+      const approvalRequestInsert = await client.query<ApprovalRequestInsertRow>(
+        `
+          insert into public.approval_requests (
+            firm_id,
+            organization_id,
+            action_type,
+            target_entity_type,
+            target_entity_id,
+            submitted_by_actor_type,
+            submitted_by_actor_id,
+            submitted_by_user_id,
+            priority,
+            expires_at,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3,
+            'journal_entry_draft',
+            $4,
+            $5,
+            $6,
+            $7::uuid,
+            $8,
+            $9::timestamptz,
+            $10::jsonb
+          )
+          returning id::text as approval_request_id, status, priority, created_at::text
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actionType,
+          input.draft_id,
+          actorType,
+          actorId,
+          actorContext.appUserId,
+          priority,
+          input.expires_at ?? null,
+          JSON.stringify({
+            request_id: context.requestId,
+            correlation_id: context.correlationId,
+            idempotency_key: context.idempotencyKey,
+            resubmitted_from_approval_request_id: draft.approval_request_id
+          })
+        ]
+      );
+
+      const approvalRequest = approvalRequestInsert.rows[0];
+
+      if (approvalRequest === undefined) {
+        throw new AppError(
+          'APPROVAL_REQUEST_CREATE_FAILED',
+          'Failed to create approval request for the resubmitted journal draft.'
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.approval_actions (
+            approval_request_id,
+            firm_id,
+            organization_id,
+            action,
+            actor_type,
+            actor_id,
+            actor_display_name,
+            user_id,
+            request_id,
+            correlation_id,
+            idempotency_key,
+            target_entity_type,
+            target_entity_id,
+            policy_snapshot,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            'submitted',
+            $4,
+            $5,
+            $6,
+            $7::uuid,
+            $8,
+            $9,
+            $10,
+            'journal_entry_draft',
+            $11,
+            '{}'::jsonb,
+            $12::jsonb
+          )
+        `,
+        [
+          approvalRequest.approval_request_id,
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          actor.agentName ?? null,
+          actorContext.appUserId,
+          context.requestId,
+          context.correlationId,
+          context.idempotencyKey,
+          input.draft_id,
+          JSON.stringify({
+            submitted_via_tool: context.toolName,
+            resubmitted_from_approval_request_id: draft.approval_request_id
+          })
+        ]
+      );
+
+      await client.query(
+        `
+          update public.journal_entry_drafts
+          set
+            status = 'pending_approval',
+            submitted_at = now(),
+            submitted_by_actor_type = $1,
+            submitted_by_actor_id = $2,
+            approval_request_id = $3::uuid,
+            updated_at = now()
+          where id = $4::uuid
+        `,
+        [actorType, actorId, approvalRequest.approval_request_id, input.draft_id]
+      );
+
+      if (draft.proposal_id !== null) {
+        await client.query(
+          `
+            update public.agent_proposals
+            set
+              status = 'pending_approval',
+              approval_request_id = $1::uuid,
+              updated_at = now()
+            where id = $2::uuid
+          `,
+          [approvalRequest.approval_request_id, draft.proposal_id]
+        );
+      }
+
+      const response = {
+        organization_id: input.organization_id,
+        draft_id: input.draft_id,
         draft_number: draft.draft_number,
         proposal_id: draft.proposal_id,
         approval_request_id: approvalRequest.approval_request_id,

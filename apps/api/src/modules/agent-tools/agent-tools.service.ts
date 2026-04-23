@@ -19,6 +19,8 @@ import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-prop
 import { ListJournalEntriesInputDto } from '../journal-tools/dto/list-journal-entries.dto';
 import { PostApprovedJournalEntryInputDto } from '../journal-tools/dto/post-approved-journal-entry.dto';
 import { ReversePostedJournalEntryInputDto } from '../journal-tools/dto/reverse-posted-journal-entry.dto';
+import { ResubmitJournalEntryDraftForApprovalInputDto } from '../journal-tools/dto/resubmit-journal-entry-draft-for-approval.dto';
+import { ReworkRejectedJournalEntryDraftInputDto } from '../journal-tools/dto/rework-rejected-journal-entry-draft.dto';
 import { ResolveApprovalRequestInputDto } from '../journal-tools/dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from '../journal-tools/dto/submit-journal-entry-draft-for-approval.dto';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
@@ -944,6 +946,87 @@ export class AgentToolsService {
           `Created journal draft ${(result as { draft_number: string }).draft_number} for organization ${(result as { organization_id: string }).organization_id}.`
       },
       {
+        name: 'rework_rejected_journal_entry_draft',
+        description: 'Updates a rejected journal draft, replaces its lines, and returns it to validated status.',
+        category: 'proposal',
+        mutability: 'proposal',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ReworkRejectedJournalEntryDraftInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'draft_id', 'entry_date', 'source_type', 'lines'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            draft_id: { type: 'string', format: 'uuid' },
+            accounting_period_id: { type: 'string', format: 'uuid' },
+            entry_date: { type: 'string', format: 'date' },
+            source_type: { type: 'string' },
+            memo: { type: 'string' },
+            metadata: { type: 'object' },
+            lines: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['account_id', 'debit', 'credit'],
+                properties: {
+                  account_id: { type: 'string', format: 'uuid' },
+                  description: { type: 'string' },
+                  debit: { type: 'number' },
+                  credit: { type: 'number' }
+                }
+              }
+            }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'draft_number',
+            'actor_context',
+            'status',
+            'entry_date',
+            'line_count',
+            'validation_result',
+            'impact_preview'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            entry_date: { type: 'string' },
+            line_count: { type: 'number' },
+            validation_result: { type: 'object' },
+            impact_preview: { type: 'object' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.reworkRejectedJournalEntryDraft(
+            input as ReworkRejectedJournalEntryDraftInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Reworked journal draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id} back to validated status.`
+      },
+      {
         name: 'post_approved_journal_entry',
         description: 'Posts an approved journal draft into immutable journal entry records.',
         category: 'commit',
@@ -1080,6 +1163,72 @@ export class AgentToolsService {
         },
         summarize: (result) =>
           `Created reversal ${(result as { reversal_entry_number: string }).reversal_entry_number} for journal entry ${(result as { original_entry_number: string }).original_entry_number}.`
+      },
+      {
+        name: 'resubmit_journal_entry_draft_for_approval',
+        description: 'Creates a fresh approval request for a previously rejected or expired validated draft.',
+        category: 'workflow',
+        mutability: 'proposal',
+        requires_approval: true,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ResubmitJournalEntryDraftForApprovalInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'draft_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            draft_id: { type: 'string', format: 'uuid' },
+            priority: { type: 'string', enum: ['low', 'normal', 'high', 'critical'] },
+            expires_at: { type: 'string', format: 'date-time' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'approval_request_id',
+            'actor_context',
+            'status',
+            'approval_status',
+            'requires_approval',
+            'priority',
+            'submitted_at'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            approval_request_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            approval_status: { type: 'string' },
+            requires_approval: { type: 'boolean' },
+            priority: { type: 'string' },
+            submitted_at: { type: 'string' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.resubmitJournalEntryDraftForApproval(
+            input as ResubmitJournalEntryDraftForApprovalInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Resubmitted journal draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id} for approval.`
       },
       {
         name: 'resolve_approval_request',

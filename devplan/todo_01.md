@@ -114,3 +114,6 @@ last_reviewed: 2026-04-23
 - [x] Add tenant-scoped `list_audit_events` so audit and approval-history events can be queried by organization, entity, and event filters without direct SQL access.
 - [x] Add a tenant-scoped `get_entity_timeline` read model that combines `audit_logs` and `approval_actions` into one ordered entity history for draft/proposal/approval/journal entities.
 - [x] Add automated tests for audit-event listing, entity-timeline success, and delegated tenant enforcement before exposing the tools live.
+- [x] Add a tenant-scoped `rework_rejected_journal_entry_draft` tool that updates rejected draft header/lines, revalidates the payload, and resets the draft back to a reworkable validated state.
+- [x] Add a tenant-scoped `resubmit_journal_entry_draft_for_approval` tool that creates a fresh approval request for a previously rejected draft and keeps proposal/draft workflow state consistent.
+- [x] Add automated tests for rejected-draft rework/resubmission success, replay/invalid-state handling, and delegated tenant enforcement before exposing the tools live.

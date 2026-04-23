@@ -34,6 +34,7 @@ describe('AgentToolsController', () => {
 
   const journalDraftService = {
     createJournalEntryDraft: jest.fn(),
+    reworkRejectedJournalEntryDraft: jest.fn(),
     listAuditEvents: jest.fn(),
     getEntityTimeline: jest.fn(),
     listJournalEntries: jest.fn(),
@@ -43,6 +44,7 @@ describe('AgentToolsController', () => {
     listAgentProposals: jest.fn(),
     getAgentProposal: jest.fn(),
     submitJournalEntryDraftForApproval: jest.fn(),
+    resubmitJournalEntryDraftForApproval: jest.fn(),
     listApprovalRequests: jest.fn(),
     getApprovalRequest: jest.fn(),
     resolveApprovalRequest: jest.fn(),
@@ -124,6 +126,41 @@ describe('AgentToolsController', () => {
       status: 'validated',
       requires_approval: false,
       entry_date: '2026-04-01',
+      line_count: 2,
+      validation_result: {
+        balanced: true,
+        account_count: 2,
+        period: {
+          id: 'period-1',
+          status: 'open'
+        }
+      },
+      impact_preview: {
+        line_count: 2,
+        total_debit: 100,
+        total_credit: 100,
+        account_ids: [
+          '660e8400-e29b-41d4-a716-446655440000',
+          '770e8400-e29b-41d4-a716-446655440000'
+        ]
+      }
+    });
+
+    journalDraftService.reworkRejectedJournalEntryDraft.mockResolvedValue({
+      organization_id: organizationId,
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'validated',
+      requires_approval: false,
+      entry_date: '2026-04-02',
       line_count: 2,
       validation_result: {
         balanced: true,
@@ -529,6 +566,26 @@ describe('AgentToolsController', () => {
       submitted_at: '2026-04-23T10:00:00.000Z'
     });
 
+    journalDraftService.resubmitJournalEntryDraftForApproval.mockResolvedValue({
+      organization_id: organizationId,
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      approval_request_id: 'ab0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'pending_approval',
+      approval_status: 'pending',
+      requires_approval: true,
+      priority: 'high',
+      submitted_at: '2026-04-23T12:30:00.000Z'
+    });
+
     journalDraftService.listApprovalRequests.mockResolvedValue({
       organization_id: organizationId,
       actor_context: {
@@ -777,7 +834,9 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'list_approval_requests' }),
         expect.objectContaining({ name: 'list_journal_entries' }),
         expect.objectContaining({ name: 'post_approved_journal_entry' }),
+        expect.objectContaining({ name: 'rework_rejected_journal_entry_draft' }),
         expect.objectContaining({ name: 'reverse_posted_journal_entry' }),
+        expect.objectContaining({ name: 'resubmit_journal_entry_draft_for_approval' }),
         expect.objectContaining({ name: 'resolve_approval_request' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' }),
@@ -935,6 +994,48 @@ describe('AgentToolsController', () => {
       expect.objectContaining({
         draft_number: 'JE-000001',
         proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+      })
+    );
+  });
+
+  it('reworks rejected journal entry drafts for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'rework_rejected_journal_entry_draft',
+        idempotency_key: 'idem-rework-journal-entry-draft',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          entry_date: '2026-04-02',
+          source_type: 'manual_adjustment',
+          memo: 'Utilities accrual revised',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 0
+            },
+            {
+              account_id: '770e8400-e29b-41d4-a716-446655440000',
+              debit: 0,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.reworkRejectedJournalEntryDraft).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        draft_number: 'JE-000001',
+        status: 'validated',
+        line_count: 2
       })
     );
   });
@@ -1574,6 +1675,34 @@ describe('AgentToolsController', () => {
     );
   });
 
+  it('resubmits rejected journal entry drafts for approval for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resubmit_journal_entry_draft_for_approval',
+        idempotency_key: 'idem-resubmit-journal-entry-draft',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          priority: 'high'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.resubmitJournalEntryDraftForApproval).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        approval_request_id: 'ab0e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001',
+        status: 'pending_approval'
+      })
+    );
+  });
+
   it('returns invalid state errors when approval submission is attempted for an ineligible draft', async () => {
     journalDraftService.submitJournalEntryDraftForApproval.mockRejectedValueOnce(
       new AppError(
@@ -1601,6 +1730,126 @@ describe('AgentToolsController', () => {
     expect(response.body.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: 'DRAFT_SUBMISSION_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('returns invalid state errors when rejected draft rework is attempted for an ineligible draft', async () => {
+    journalDraftService.reworkRejectedJournalEntryDraft.mockRejectedValueOnce(
+      new AppError(
+        'DRAFT_REWORK_INVALID_STATE',
+        'Journal draft 880e8400-e29b-41d4-a716-446655440000 must be rejected before it can be reworked.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'rework_rejected_journal_entry_draft',
+        idempotency_key: 'idem-rework-journal-entry-draft-invalid',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          entry_date: '2026-04-02',
+          source_type: 'manual_adjustment',
+          memo: 'Utilities accrual revised',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 0
+            },
+            {
+              account_id: '770e8400-e29b-41d4-a716-446655440000',
+              debit: 0,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'DRAFT_REWORK_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated rejected draft rework fails membership checks', async () => {
+    journalDraftService.reworkRejectedJournalEntryDraft.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'rework_rejected_journal_entry_draft',
+        idempotency_key: 'idem-rework-journal-entry-draft-denied',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          entry_date: '2026-04-02',
+          source_type: 'manual_adjustment',
+          memo: 'Utilities accrual revised',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 0
+            },
+            {
+              account_id: '770e8400-e29b-41d4-a716-446655440000',
+              debit: 0,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
+      ])
+    );
+  });
+
+  it('returns invalid state errors when draft resubmission is attempted for an ineligible draft', async () => {
+    journalDraftService.resubmitJournalEntryDraftForApproval.mockRejectedValueOnce(
+      new AppError(
+        'DRAFT_RESUBMISSION_INVALID_STATE',
+        'Journal draft 880e8400-e29b-41d4-a716-446655440000 must be validated with a prior rejected, expired, or cancelled approval request before it can be resubmitted.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'resubmit_journal_entry_draft_for_approval',
+        idempotency_key: 'idem-resubmit-journal-entry-draft-invalid',
+        input: {
+          organization_id: organizationId,
+          draft_id: '880e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'DRAFT_RESUBMISSION_INVALID_STATE' })
       ])
     );
   });

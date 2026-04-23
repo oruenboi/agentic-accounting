@@ -43,6 +43,12 @@ describe('JournalDraftService', () => {
     reason: 'Customer invoice voided'
   };
 
+  const reworkInput = {
+    ...input,
+    draft_id: 'draft-1',
+    memo: 'Utilities accrual revised'
+  };
+
   const actorContext = {
     appUserId: '10000000-0000-4000-8000-000000000002',
     authUserId: '11111111-1111-4111-8111-111111111111',
@@ -855,6 +861,268 @@ describe('JournalDraftService', () => {
       })
     );
     expect(query).toHaveBeenCalledTimes(8);
+  });
+
+  it('reworks a rejected draft back to validated state and replaces its lines', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'rejected',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1',
+            approval_request_id: 'approval-1',
+            approval_status: 'rejected',
+            proposal_status: 'rejected'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.reworkRejectedJournalEntryDraft(
+      reworkInput,
+      actor,
+      {
+        requestId: 'request-6',
+        correlationId: 'corr-6',
+        idempotencyKey: 'idem-rework-1',
+        toolName: 'rework_rejected_journal_entry_draft'
+      }
+    );
+
+    expect(journalValidationService.validateJournalEntry).toHaveBeenCalledWith(reworkInput, actor);
+    expect(result).toEqual(
+      expect.objectContaining({
+        draft_id: 'draft-1',
+        draft_number: 'JE-000001',
+        proposal_id: 'proposal-1',
+        status: 'validated',
+        line_count: 2
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(9);
+  });
+
+  it('replays a succeeded rework response when the same payload is retried', async () => {
+    const replayedResponse = {
+      draft_id: 'draft-1',
+      draft_number: 'JE-000001',
+      status: 'validated'
+    };
+    const requestHash = (service as unknown as { hashRequestPayload: (value: typeof reworkInput) => string }).hashRequestPayload(
+      reworkInput
+    );
+
+    const query = jest.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          request_hash: requestHash,
+          status: 'succeeded',
+          response_body: replayedResponse
+        }
+      ]
+    });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.reworkRejectedJournalEntryDraft(
+      reworkInput,
+      actor,
+      {
+        requestId: 'request-6',
+        correlationId: 'corr-6',
+        idempotencyKey: 'idem-rework-1',
+        toolName: 'rework_rejected_journal_entry_draft'
+      }
+    );
+
+    expect(result).toBe(replayedResponse);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects rework when the draft is not rejected', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'validated',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1',
+            approval_request_id: 'approval-1',
+            approval_status: 'rejected',
+            proposal_status: 'rejected'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.reworkRejectedJournalEntryDraft(
+        reworkInput,
+        actor,
+        {
+          requestId: 'request-6',
+          correlationId: 'corr-6',
+          idempotencyKey: 'idem-rework-1',
+          toolName: 'rework_rejected_journal_entry_draft'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'DRAFT_REWORK_INVALID_STATE'
+    });
+  });
+
+  it('resubmits a previously rejected draft for approval with a fresh approval request', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'validated',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual revised',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1',
+            approval_request_id: 'approval-1',
+            approval_status: 'rejected',
+            proposal_status: 'needs_review'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            approval_request_id: 'approval-2',
+            status: 'pending',
+            priority: 'high',
+            created_at: '2026-04-23T12:30:00.000Z'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.resubmitJournalEntryDraftForApproval(
+      {
+        organization_id: input.organization_id,
+        draft_id: 'draft-1',
+        priority: 'high'
+      },
+      actor,
+      {
+        requestId: 'request-7',
+        correlationId: 'corr-7',
+        idempotencyKey: 'idem-resubmit-1',
+        toolName: 'resubmit_journal_entry_draft_for_approval'
+      }
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        draft_id: 'draft-1',
+        draft_number: 'JE-000001',
+        proposal_id: 'proposal-1',
+        approval_request_id: 'approval-2',
+        status: 'pending_approval',
+        approval_status: 'pending',
+        priority: 'high'
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(8);
+  });
+
+  it('rejects resubmission when the draft is not in validated state with a prior rejected approval', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            status: 'pending_approval',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual revised',
+            accounting_period_id: input.accounting_period_id,
+            validation_summary: { valid: true },
+            metadata: { source: 'test' },
+            proposal_id: 'proposal-1',
+            approval_request_id: 'approval-1',
+            approval_status: 'pending',
+            proposal_status: 'pending_approval'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.resubmitJournalEntryDraftForApproval(
+        {
+          organization_id: input.organization_id,
+          draft_id: 'draft-1'
+        },
+        actor,
+        {
+          requestId: 'request-7',
+          correlationId: 'corr-7',
+          idempotencyKey: 'idem-resubmit-1',
+          toolName: 'resubmit_journal_entry_draft_for_approval'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'DRAFT_RESUBMISSION_INVALID_STATE'
+    });
   });
 
   it('rejects approval submission when the draft is not validated', async () => {
