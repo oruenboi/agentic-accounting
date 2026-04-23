@@ -265,4 +265,54 @@ describe('JournalDraftService', () => {
     );
     expect(result.lines).toHaveLength(2);
   });
+
+  it('lists agent proposals for an organization', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          proposal_id: 'proposal-1',
+          proposal_type: 'journal_entry',
+          status: 'needs_review',
+          title: 'Journal draft: Utilities accrual',
+          created_at: '2026-04-23T10:00:00.000Z',
+          updated_at: '2026-04-23T10:00:00.000Z',
+          source_tool_name: 'create_journal_entry_draft',
+          source_request_id: 'request-1',
+          correlation_id: 'corr-1',
+          idempotency_key: 'idem-1',
+          target_entity_type: 'journal_entry_draft',
+          target_entity_id: 'draft-1',
+          draft_number: 'JE-000001'
+        }
+      ]
+    });
+
+    const result = await service.listAgentProposals(
+      {
+        organization_id: input.organization_id,
+        status: 'needs_review',
+        limit: 10
+      },
+      actor
+    );
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, input.organization_id);
+    expect(result).toEqual(
+      expect.objectContaining({
+        organization_id: input.organization_id,
+        filters: {
+          status: 'needs_review',
+          limit: 10
+        }
+      })
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        proposal_id: 'proposal-1',
+        draft_number: 'JE-000001',
+        status: 'needs_review'
+      })
+    ]);
+  });
 });

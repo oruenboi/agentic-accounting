@@ -8,6 +8,7 @@ import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
+import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ValidateJournalEntryInputDto } from '../journal-tools/dto/validate-journal-entry.dto';
 import {
@@ -421,6 +422,40 @@ export class AgentToolsService {
           this.journalValidationService.validateJournalEntry(input as ValidateJournalEntryInputDto, actor),
         summarize: (result) =>
           `Journal entry validation ${(result as { valid: boolean }).valid ? 'passed' : 'failed'} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'list_agent_proposals',
+        description: 'Returns recent agent proposals for an organization, with optional status filtering.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ListAgentProposalsInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            status: { type: 'string' },
+            limit: { type: 'number' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'actor_context', 'filters', 'items'],
+          properties: {
+            organization_id: { type: 'string' },
+            actor_context: { type: 'object' },
+            filters: { type: 'object' },
+            items: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.listAgentProposals(input as ListAgentProposalsInputDto, actor),
+        summarize: (result) =>
+          `Agent proposal listing returned ${this.countItems(result)} item(s) for organization ${(result as { organization_id: string }).organization_id}.`
       },
       {
         name: 'get_journal_entry_draft',

@@ -33,7 +33,8 @@ describe('AgentToolsController', () => {
 
   const journalDraftService = {
     createJournalEntryDraft: jest.fn(),
-    getJournalEntryDraft: jest.fn()
+    getJournalEntryDraft: jest.fn(),
+    listAgentProposals: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -186,6 +187,38 @@ describe('AgentToolsController', () => {
       ]
     });
 
+    journalDraftService.listAgentProposals.mockResolvedValue({
+      organization_id: organizationId,
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      filters: {
+        status: 'needs_review',
+        limit: 10
+      },
+      items: [
+        {
+          proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+          proposal_type: 'journal_entry',
+          status: 'needs_review',
+          title: 'Journal draft: Utilities accrual',
+          created_at: '2026-04-23T10:00:00.000Z',
+          updated_at: '2026-04-23T10:00:00.000Z',
+          source_tool_name: 'create_journal_entry_draft',
+          source_request_id: 'request-1',
+          correlation_id: 'corr-1',
+          idempotency_key: 'idem-1',
+          target_entity_type: 'journal_entry_draft',
+          target_entity_id: '880e8400-e29b-41d4-a716-446655440000',
+          draft_number: 'JE-000001'
+        }
+      ]
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -266,6 +299,7 @@ describe('AgentToolsController', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'get_health_status' }),
         expect.objectContaining({ name: 'get_trial_balance' }),
+        expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' })
       ])
@@ -448,6 +482,40 @@ describe('AgentToolsController', () => {
         proposal: expect.objectContaining({
           proposal_id: '990e8400-e29b-41d4-a716-446655440000'
         })
+      })
+    );
+  });
+
+  it('lists agent proposals for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'list_agent_proposals',
+        input: {
+          organization_id: organizationId,
+          status: 'needs_review',
+          limit: 10
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.listAgentProposals).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        filters: {
+          status: 'needs_review',
+          limit: 10
+        },
+        items: [
+          expect.objectContaining({
+            proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+            draft_number: 'JE-000001'
+          })
+        ]
       })
     );
   });

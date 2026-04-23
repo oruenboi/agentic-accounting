@@ -92,3 +92,5 @@ last_reviewed: 2026-04-23
 - [x] Add automated tests for `create_journal_entry_draft` success, idempotency replay/conflict, and delegated tenant enforcement before exposing it live.
 - [x] Add a tenant-scoped `get_journal_entry_draft` agent tool so persisted draft/proposal state can be read back safely.
 - [x] Add automated tests for `get_journal_entry_draft` success and delegated tenant enforcement failures before exposing it live.
+- [x] Add a tenant-scoped `list_agent_proposals` agent tool so proposal-backed draft activity can be discovered without already knowing a proposal or draft ID.
+- [x] Add automated tests for `list_agent_proposals` success and delegated tenant enforcement failures before exposing it live.

@@ -6,6 +6,7 @@ import { DatabaseService, type Queryable } from '../database/database.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
 import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
+import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
 import { JournalValidationService } from './journal-validation.service';
 
@@ -63,6 +64,22 @@ interface DraftLineRow {
   description: string | null;
   debit: string;
   credit: string;
+}
+
+interface ProposalListRow {
+  proposal_id: string;
+  proposal_type: string;
+  status: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  source_tool_name: string | null;
+  source_request_id: string | null;
+  correlation_id: string | null;
+  idempotency_key: string | null;
+  target_entity_type: string | null;
+  target_entity_id: string | null;
+  draft_number: string | null;
 }
 
 @Injectable()
@@ -444,6 +461,63 @@ export class JournalDraftService {
         description: line.description,
         debit: Number(line.debit),
         credit: Number(line.credit)
+      }))
+    };
+  }
+
+  async listAgentProposals(input: ListAgentProposalsInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const limit = input.limit ?? 20;
+
+    const result = await this.databaseService.query<ProposalListRow>(
+      `
+        select
+          ap.id::text as proposal_id,
+          ap.proposal_type,
+          ap.status,
+          ap.title,
+          ap.created_at::text,
+          ap.updated_at::text,
+          ap.source_tool_name,
+          ap.source_request_id,
+          ap.correlation_id,
+          ap.idempotency_key,
+          ap.target_entity_type,
+          ap.target_entity_id::text,
+          d.draft_number
+        from public.agent_proposals ap
+        left join public.journal_entry_drafts d
+          on ap.target_entity_type = 'journal_entry_draft'
+         and ap.target_entity_id = d.id
+        where ap.organization_id = $1::uuid
+          and ($2::text is null or ap.status = $2::text)
+        order by ap.created_at desc
+        limit $3
+      `,
+      [input.organization_id, input.status ?? null, limit]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      actor_context: actorContext,
+      filters: {
+        status: input.status ?? null,
+        limit
+      },
+      items: result.rows.map((row) => ({
+        proposal_id: row.proposal_id,
+        proposal_type: row.proposal_type,
+        status: row.status,
+        title: row.title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        source_tool_name: row.source_tool_name,
+        source_request_id: row.source_request_id,
+        correlation_id: row.correlation_id,
+        idempotency_key: row.idempotency_key,
+        target_entity_type: row.target_entity_type,
+        target_entity_id: row.target_entity_id,
+        draft_number: row.draft_number
       }))
     };
   }
