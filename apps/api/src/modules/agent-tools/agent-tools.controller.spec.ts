@@ -7,6 +7,7 @@ import { AgentToolsAuthGuard } from '../auth/agent-tools-auth.guard';
 import { AgentClientAuthService } from '../auth/agent-client-auth.service';
 import { SupabaseAuthService } from '../auth/supabase-auth.service';
 import { HealthService } from '../health/health.service';
+import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ReportsService } from '../reports/reports.service';
 
 describe('AgentToolsController', () => {
@@ -23,6 +24,10 @@ describe('AgentToolsController', () => {
     getBalanceSheet: jest.fn(),
     getProfitAndLoss: jest.fn(),
     getGeneralLedger: jest.fn()
+  };
+
+  const journalValidationService = {
+    validateJournalEntry: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -52,6 +57,36 @@ describe('AgentToolsController', () => {
         firmId: 'firm-1'
       },
       items: []
+    });
+
+    journalValidationService.validateJournalEntry.mockResolvedValue({
+      organization_id: organizationId,
+      entry_date: '2026-04-01',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      valid: true,
+      requires_approval: false,
+      errors: [],
+      warnings: [],
+      impact_preview: {
+        line_count: 2,
+        total_debit: 100,
+        total_credit: 100,
+        account_ids: [
+          '660e8400-e29b-41d4-a716-446655440000',
+          '770e8400-e29b-41d4-a716-446655440000'
+        ]
+      },
+      validation_result: {
+        balanced: true,
+        account_count: 2,
+        period: null
+      }
     });
 
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
@@ -86,6 +121,10 @@ describe('AgentToolsController', () => {
         {
           provide: ReportsService,
           useValue: reportsService
+        },
+        {
+          provide: JournalValidationService,
+          useValue: journalValidationService
         },
         {
           provide: SupabaseAuthService,
@@ -207,5 +246,72 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
       ])
     );
+  });
+
+  it('validates journal entries for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'validate_journal_entry',
+        idempotency_key: 'idem-validate-journal-entry',
+        input: {
+          organization_id: organizationId,
+          entry_date: '2026-04-01',
+          source_type: 'manual_adjustment',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 0
+            },
+            {
+              account_id: '770e8400-e29b-41d4-a716-446655440000',
+              debit: 0,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalValidationService.validateJournalEntry).toHaveBeenCalled();
+    expect(response.body.result.valid).toBe(true);
+  });
+
+  it('returns validation errors for invalid journal entry payloads', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'validate_journal_entry',
+        idempotency_key: 'idem-invalid-journal-entry',
+        input: {
+          organization_id: organizationId,
+          entry_date: '2026-04-01',
+          source_type: 'manual_adjustment',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TOOL_INPUT_INVALID' })
+      ])
+    );
+    expect(journalValidationService.validateJournalEntry).not.toHaveBeenCalled();
   });
 });

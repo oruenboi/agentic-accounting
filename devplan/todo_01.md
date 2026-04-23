@@ -81,3 +81,5 @@ last_reviewed: 2026-04-07
 - [x] Add a bounded non-user `agent-tools` auth path using configured agent client credentials plus explicit delegated user context for tenant-scoped reads.
 - [x] Add automated API tests for `agent-tools` schema and execute endpoints under bearer-token and agent-client auth paths.
 - [x] Add automated tests for delegated tenant enforcement failures on tenant-scoped `agent-tools` reads.
+- [x] Add a non-mutating `validate_journal_entry` agent tool that checks tenant/account/period/balance rules without creating ledger rows.
+- [x] Add API tests for `validate_journal_entry` success and validation-failure paths before any draft-creation tool is introduced.

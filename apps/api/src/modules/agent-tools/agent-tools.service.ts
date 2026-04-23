@@ -4,6 +4,8 @@ import { validate, type ValidationError } from 'class-validator';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 import { HealthService } from '../health/health.service';
+import { JournalValidationService } from '../journal-tools/journal-validation.service';
+import { ValidateJournalEntryInputDto } from '../journal-tools/dto/validate-journal-entry.dto';
 import {
   BalanceSheetQueryDto,
   GeneralLedgerQueryDto,
@@ -61,7 +63,8 @@ interface AgentToolExecutionEnvelope {
 export class AgentToolsService {
   constructor(
     private readonly healthService: HealthService,
-    private readonly reportsService: ReportsService
+    private readonly reportsService: ReportsService,
+    private readonly journalValidationService: JournalValidationService
   ) {}
 
   getSchema() {
@@ -332,6 +335,71 @@ export class AgentToolsService {
         execute: async (input, actor) => this.reportsService.getProfitAndLoss(input as ProfitAndLossQueryDto, actor),
         summarize: (result) =>
           `Profit and loss returned ${this.countItems(result)} rows for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'validate_journal_entry',
+        description: 'Validates a candidate journal entry without creating draft or posted ledger rows.',
+        category: 'proposal',
+        mutability: 'proposal',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ValidateJournalEntryInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'entry_date', 'source_type', 'lines'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            accounting_period_id: { type: 'string', format: 'uuid' },
+            entry_date: { type: 'string', format: 'date' },
+            source_type: { type: 'string' },
+            memo: { type: 'string' },
+            metadata: { type: 'object' },
+            lines: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['account_id', 'debit', 'credit'],
+                properties: {
+                  account_id: { type: 'string', format: 'uuid' },
+                  description: { type: 'string' },
+                  debit: { type: 'number' },
+                  credit: { type: 'number' }
+                }
+              }
+            }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'entry_date',
+            'actor_context',
+            'valid',
+            'requires_approval',
+            'errors',
+            'warnings',
+            'impact_preview',
+            'validation_result'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            entry_date: { type: 'string' },
+            actor_context: { type: 'object' },
+            valid: { type: 'boolean' },
+            requires_approval: { type: 'boolean' },
+            errors: { type: 'array' },
+            warnings: { type: 'array' },
+            impact_preview: { type: 'object' },
+            validation_result: { type: 'object' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalValidationService.validateJournalEntry(input as ValidateJournalEntryInputDto, actor),
+        summarize: (result) =>
+          `Journal entry validation ${(result as { valid: boolean }).valid ? 'passed' : 'failed'} for organization ${(result as { organization_id: string }).organization_id}.`
       },
       {
         name: 'get_general_ledger',
