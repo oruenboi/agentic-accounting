@@ -59,7 +59,7 @@ last_reviewed: 2026-04-23
 - [x] Add docs site navigation and IA documentation.
 - [x] Add docs publishing and source-of-truth documentation.
 - [x] Add backend process map documentation.
-- [ ] Choose and publish an OSS license for the repository.
+- [x] Choose and publish an OSS license for the repository.
 - [ ] Add a security policy / responsible disclosure doc for the public repo.
 - [ ] Sanity-check and finalize public-facing OSS docs (`README.md`, quickstarts, governance, roadmap).
 - [ ] Decide and document the OpenClaw companion-fork vs upstream support stance for the initial OSS release.
