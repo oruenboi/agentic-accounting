@@ -34,6 +34,8 @@ describe('AgentToolsController', () => {
 
   const journalDraftService = {
     createJournalEntryDraft: jest.fn(),
+    listAuditEvents: jest.fn(),
+    getEntityTimeline: jest.fn(),
     listJournalEntries: jest.fn(),
     getJournalEntry: jest.fn(),
     getJournalEntryReversalChain: jest.fn(),
@@ -140,6 +142,105 @@ describe('AgentToolsController', () => {
           '770e8400-e29b-41d4-a716-446655440000'
         ]
       }
+    });
+
+    journalDraftService.listAuditEvents.mockResolvedValue({
+      organization_id: organizationId,
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      filters: {
+        entity_type: 'journal_entry_draft',
+        entity_id: '880e8400-e29b-41d4-a716-446655440000',
+        event_name: null,
+        actor_type: null,
+        request_id: null,
+        correlation_id: null,
+        from_timestamp: null,
+        to_timestamp: null,
+        limit: 20
+      },
+      items: [
+        {
+          event_id: 'audit-1',
+          source: 'approval_action',
+          organization_id: organizationId,
+          event_name: 'approval.action.approved',
+          event_timestamp: '2026-04-23T11:00:00.000Z',
+          actor: {
+            actor_type: 'agent',
+            actor_id: 'test-agent-client',
+            actor_display_name: 'test-agent',
+            user_id: 'app-user-1',
+            agent_name: null,
+            agent_run_id: null
+          },
+          tool_name: null,
+          request_id: 'request-3',
+          correlation_id: 'corr-3',
+          idempotency_key: 'idem-resolve-1',
+          entity: {
+            entity_type: 'journal_entry_draft',
+            entity_id: '880e8400-e29b-41d4-a716-446655440000',
+            parent_entity_type: 'approval_request',
+            parent_entity_id: 'aa0e8400-e29b-41d4-a716-446655440000'
+          },
+          action_status: 'succeeded',
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          approval_required: true,
+          summary: 'Threshold review complete',
+          metadata: {}
+        }
+      ]
+    });
+
+    journalDraftService.getEntityTimeline.mockResolvedValue({
+      organization_id: organizationId,
+      entity_type: 'journal_entry_draft',
+      entity_id: '880e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      items: [
+        {
+          event_id: 'audit-1',
+          source: 'approval_action',
+          organization_id: organizationId,
+          event_name: 'approval.action.submitted',
+          event_timestamp: '2026-04-23T10:00:00.000Z',
+          actor: {
+            actor_type: 'agent',
+            actor_id: 'test-agent-client',
+            actor_display_name: 'test-agent',
+            user_id: 'app-user-1',
+            agent_name: null,
+            agent_run_id: null
+          },
+          tool_name: null,
+          request_id: 'request-2',
+          correlation_id: 'corr-2',
+          idempotency_key: 'idem-submit-1',
+          entity: {
+            entity_type: 'journal_entry_draft',
+            entity_id: '880e8400-e29b-41d4-a716-446655440000',
+            parent_entity_type: 'approval_request',
+            parent_entity_id: 'aa0e8400-e29b-41d4-a716-446655440000'
+          },
+          action_status: 'succeeded',
+          approval_request_id: 'aa0e8400-e29b-41d4-a716-446655440000',
+          approval_required: true,
+          summary: 'Approval action submitted recorded',
+          metadata: {}
+        }
+      ]
     });
 
     journalDraftService.listJournalEntries.mockResolvedValue({
@@ -667,10 +768,12 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'get_health_status' }),
         expect.objectContaining({ name: 'get_trial_balance' }),
         expect.objectContaining({ name: 'get_agent_proposal' }),
+        expect.objectContaining({ name: 'get_entity_timeline' }),
         expect.objectContaining({ name: 'get_approval_request' }),
         expect.objectContaining({ name: 'get_journal_entry' }),
         expect.objectContaining({ name: 'get_journal_entry_reversal_chain' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
+        expect.objectContaining({ name: 'list_audit_events' }),
         expect.objectContaining({ name: 'list_approval_requests' }),
         expect.objectContaining({ name: 'list_journal_entries' }),
         expect.objectContaining({ name: 'post_approved_journal_entry' }),
@@ -861,6 +964,57 @@ describe('AgentToolsController', () => {
         })
       })
     );
+  });
+
+  it('lists audit events for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'list_audit_events',
+        input: {
+          organization_id: organizationId,
+          entity_type: 'journal_entry_draft',
+          entity_id: '880e8400-e29b-41d4-a716-446655440000',
+          limit: 20
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.listAuditEvents).toHaveBeenCalled();
+    expect(response.body.result.items).toEqual([
+      expect.objectContaining({
+        event_name: 'approval.action.approved'
+      })
+    ]);
+  });
+
+  it('returns an entity timeline for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_entity_timeline',
+        input: {
+          organization_id: organizationId,
+          entity_type: 'journal_entry_draft',
+          entity_id: '880e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getEntityTimeline).toHaveBeenCalled();
+    expect(response.body.result.items).toEqual([
+      expect.objectContaining({
+        event_name: 'approval.action.submitted'
+      })
+    ]);
   });
 
   it('lists posted journal entries for delegated agent callers', async () => {
@@ -1295,6 +1449,34 @@ describe('AgentToolsController', () => {
         input: {
           organization_id: organizationId,
           journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated audit reads fail membership checks', async () => {
+    journalDraftService.getEntityTimeline.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_entity_timeline',
+        input: {
+          organization_id: organizationId,
+          entity_type: 'journal_entry_draft',
+          entity_id: '880e8400-e29b-41d4-a716-446655440000'
         }
       })
       .expect(201);

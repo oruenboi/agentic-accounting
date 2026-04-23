@@ -7,9 +7,11 @@ import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
 import { GetApprovalRequestInputDto } from './dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from './dto/get-agent-proposal.dto';
+import { GetEntityTimelineInputDto } from './dto/get-entity-timeline.dto';
 import { GetJournalEntryInputDto } from './dto/get-journal-entry.dto';
 import { GetJournalEntryReversalChainInputDto } from './dto/get-journal-entry-reversal-chain.dto';
 import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
+import { ListAuditEventsInputDto } from './dto/list-audit-events.dto';
 import { ListApprovalRequestsInputDto } from './dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
 import { ListJournalEntriesInputDto } from './dto/list-journal-entries.dto';
@@ -267,6 +269,33 @@ interface JournalEntryDetailRow {
   reversed_by_journal_entry_id: string | null;
   reversal_date: string | null;
   reversal_reason: string | null;
+}
+
+interface AuditFeedRow {
+  event_id: string;
+  source: string;
+  organization_id: string | null;
+  event_name: string;
+  event_timestamp: string;
+  actor_type: string;
+  actor_id: string;
+  actor_display_name: string | null;
+  user_id: string | null;
+  agent_name: string | null;
+  agent_run_id: string | null;
+  tool_name: string | null;
+  request_id: string | null;
+  correlation_id: string | null;
+  idempotency_key: string | null;
+  entity_type: string;
+  entity_id: string;
+  parent_entity_type: string | null;
+  parent_entity_id: string | null;
+  action_status: string;
+  approval_request_id: string | null;
+  approval_required: boolean;
+  summary: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 interface AccountingPeriodRow {
@@ -2651,7 +2680,62 @@ export class JournalDraftService {
                 status: reversalEntry.status,
                 posted_at: reversalEntry.posted_at
               }
-            }
+          }
+    };
+  }
+
+  async listAuditEvents(input: ListAuditEventsInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const limit = input.limit ?? 50;
+
+    const result = await this.databaseService.query<AuditFeedRow>(
+      this.buildAuditFeedQuery(),
+      [
+        input.organization_id,
+        input.entity_type ?? null,
+        input.entity_id ?? null,
+        input.event_name ?? null,
+        input.actor_type ?? null,
+        input.request_id ?? null,
+        input.correlation_id ?? null,
+        input.from_timestamp ?? null,
+        input.to_timestamp ?? null,
+        limit
+      ]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      actor_context: actorContext,
+      filters: {
+        entity_type: input.entity_type ?? null,
+        entity_id: input.entity_id ?? null,
+        event_name: input.event_name ?? null,
+        actor_type: input.actor_type ?? null,
+        request_id: input.request_id ?? null,
+        correlation_id: input.correlation_id ?? null,
+        from_timestamp: input.from_timestamp ?? null,
+        to_timestamp: input.to_timestamp ?? null,
+        limit
+      },
+      items: result.rows.map((row) => this.mapAuditFeedRow(row))
+    };
+  }
+
+  async getEntityTimeline(input: GetEntityTimelineInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const result = await this.databaseService.query<AuditFeedRow>(
+      this.buildAuditFeedQuery(),
+      [input.organization_id, input.entity_type, input.entity_id, null, null, null, null, null, null, 100]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      entity_type: input.entity_type,
+      entity_id: input.entity_id,
+      actor_context: actorContext,
+      items: result.rows.map((row) => this.mapAuditFeedRow(row))
     };
   }
 
@@ -2757,6 +2841,124 @@ export class JournalDraftService {
 
   private hashRequestPayload(input: unknown) {
     return createHash('sha256').update(JSON.stringify(this.normalizePayload(input))).digest('hex');
+  }
+
+  private buildAuditFeedQuery() {
+    return `
+      with normalized_events as (
+        select
+          al.id::text as event_id,
+          'audit_log'::text as source,
+          al.organization_id::text as organization_id,
+          al.event_name,
+          al.event_timestamp::text,
+          al.actor_type,
+          al.actor_id,
+          al.actor_display_name,
+          al.user_id::text,
+          al.agent_name,
+          al.agent_run_id,
+          al.tool_name,
+          al.request_id,
+          al.correlation_id,
+          al.idempotency_key,
+          al.entity_type,
+          al.entity_id,
+          al.parent_entity_type,
+          al.parent_entity_id,
+          al.action_status,
+          al.approval_request_id::text,
+          al.approval_required,
+          coalesce(al.metadata ->> 'summary', null) as summary,
+          al.metadata
+        from public.audit_logs al
+        where al.organization_id = $1::uuid
+
+        union all
+
+        select
+          aa.id::text as event_id,
+          'approval_action'::text as source,
+          aa.organization_id::text as organization_id,
+          ('approval.action.' || aa.action)::text as event_name,
+          aa.action_timestamp::text,
+          aa.actor_type,
+          aa.actor_id,
+          aa.actor_display_name,
+          aa.user_id::text,
+          null::text as agent_name,
+          null::text as agent_run_id,
+          null::text as tool_name,
+          aa.request_id,
+          aa.correlation_id,
+          aa.idempotency_key,
+          aa.target_entity_type as entity_type,
+          aa.target_entity_id as entity_id,
+          'approval_request'::text as parent_entity_type,
+          aa.approval_request_id::text as parent_entity_id,
+          'succeeded'::text as action_status,
+          aa.approval_request_id::text,
+          true as approval_required,
+          coalesce(
+            aa.decision_reason,
+            aa.comments,
+            ('Approval action ' || aa.action || ' recorded')
+          ) as summary,
+          jsonb_build_object(
+            'decision_reason', aa.decision_reason,
+            'comments', aa.comments,
+            'policy_snapshot', aa.policy_snapshot,
+            'metadata', aa.metadata
+          ) as metadata
+        from public.approval_actions aa
+        where aa.organization_id = $1::uuid
+      )
+      select *
+      from normalized_events ne
+      where ($2::text is null or ne.entity_type = $2::text)
+        and ($3::text is null or ne.entity_id = $3::text or ne.parent_entity_id = $3::text)
+        and ($4::text is null or ne.event_name = $4::text)
+        and ($5::text is null or ne.actor_type = $5::text)
+        and ($6::text is null or ne.request_id = $6::text)
+        and ($7::text is null or ne.correlation_id = $7::text)
+        and ($8::timestamptz is null or ne.event_timestamp::timestamptz >= $8::timestamptz)
+        and ($9::timestamptz is null or ne.event_timestamp::timestamptz <= $9::timestamptz)
+      order by ne.event_timestamp::timestamptz desc
+      limit $10
+    `;
+  }
+
+  private mapAuditFeedRow(row: AuditFeedRow) {
+    return {
+      event_id: row.event_id,
+      source: row.source,
+      organization_id: row.organization_id,
+      event_name: row.event_name,
+      event_timestamp: row.event_timestamp,
+      actor: {
+        actor_type: row.actor_type,
+        actor_id: row.actor_id,
+        actor_display_name: row.actor_display_name,
+        user_id: row.user_id,
+        agent_name: row.agent_name,
+        agent_run_id: row.agent_run_id
+      },
+      tool_name: row.tool_name,
+      request_id: row.request_id,
+      correlation_id: row.correlation_id,
+      idempotency_key: row.idempotency_key,
+      entity: {
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        parent_entity_type: row.parent_entity_type,
+        parent_entity_id: row.parent_entity_id
+      },
+      action_status: row.action_status,
+      approval_request_id: row.approval_request_id,
+      approval_required: row.approval_required,
+      summary: row.summary,
+      metadata: row.metadata ?? {}
+    };
   }
 
   private normalizePayload(value: unknown): unknown {

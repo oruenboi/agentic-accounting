@@ -382,6 +382,154 @@ describe('JournalDraftService', () => {
     );
   });
 
+  it('lists normalized audit events for an organization', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          event_id: 'audit-1',
+          source: 'approval_action',
+          organization_id: input.organization_id,
+          event_name: 'approval.action.approved',
+          event_timestamp: '2026-04-23T11:00:00.000Z',
+          actor_type: 'agent',
+          actor_id: 'test-agent-client',
+          actor_display_name: 'test-agent',
+          user_id: actorContext.appUserId,
+          agent_name: null,
+          agent_run_id: null,
+          tool_name: null,
+          request_id: 'request-3',
+          correlation_id: 'corr-3',
+          idempotency_key: 'idem-resolve-1',
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1',
+          parent_entity_type: 'approval_request',
+          parent_entity_id: 'approval-1',
+          action_status: 'succeeded',
+          approval_request_id: 'approval-1',
+          approval_required: true,
+          summary: 'Threshold review complete',
+          metadata: { decision_reason: 'Threshold review complete' }
+        }
+      ]
+    });
+
+    const result = await service.listAuditEvents(
+      {
+        organization_id: input.organization_id,
+        entity_type: 'journal_entry_draft',
+        entity_id: 'draft-1',
+        limit: 20
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        organization_id: input.organization_id,
+        filters: expect.objectContaining({
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1',
+          limit: 20
+        })
+      })
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        event_id: 'audit-1',
+        event_name: 'approval.action.approved',
+        entity: expect.objectContaining({
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1'
+        })
+      })
+    ]);
+  });
+
+  it('returns an entity timeline with normalized approval-history events', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          event_id: 'audit-1',
+          source: 'approval_action',
+          organization_id: input.organization_id,
+          event_name: 'approval.action.submitted',
+          event_timestamp: '2026-04-23T10:00:00.000Z',
+          actor_type: 'agent',
+          actor_id: 'test-agent-client',
+          actor_display_name: 'test-agent',
+          user_id: actorContext.appUserId,
+          agent_name: null,
+          agent_run_id: null,
+          tool_name: null,
+          request_id: 'request-2',
+          correlation_id: 'corr-2',
+          idempotency_key: 'idem-submit-1',
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1',
+          parent_entity_type: 'approval_request',
+          parent_entity_id: 'approval-1',
+          action_status: 'succeeded',
+          approval_request_id: 'approval-1',
+          approval_required: true,
+          summary: 'Approval action submitted recorded',
+          metadata: {}
+        },
+        {
+          event_id: 'audit-2',
+          source: 'approval_action',
+          organization_id: input.organization_id,
+          event_name: 'approval.action.approved',
+          event_timestamp: '2026-04-23T11:00:00.000Z',
+          actor_type: 'agent',
+          actor_id: 'test-agent-client',
+          actor_display_name: 'test-agent',
+          user_id: actorContext.appUserId,
+          agent_name: null,
+          agent_run_id: null,
+          tool_name: null,
+          request_id: 'request-3',
+          correlation_id: 'corr-3',
+          idempotency_key: 'idem-resolve-1',
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1',
+          parent_entity_type: 'approval_request',
+          parent_entity_id: 'approval-1',
+          action_status: 'succeeded',
+          approval_request_id: 'approval-1',
+          approval_required: true,
+          summary: 'Threshold review complete',
+          metadata: { decision_reason: 'Threshold review complete' }
+        }
+      ]
+    });
+
+    const result = await service.getEntityTimeline(
+      {
+        organization_id: input.organization_id,
+        entity_type: 'journal_entry_draft',
+        entity_id: 'draft-1'
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        organization_id: input.organization_id,
+        entity_type: 'journal_entry_draft',
+        entity_id: 'draft-1'
+      })
+    );
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        event_name: 'approval.action.submitted'
+      })
+    );
+  });
+
   it('lists posted journal entries for an organization', async () => {
     tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
     databaseService.query.mockResolvedValueOnce({

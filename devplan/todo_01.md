@@ -111,3 +111,6 @@ last_reviewed: 2026-04-23
 - [x] Add tenant-scoped `list_journal_entries` and `get_journal_entry` agent tools so posted accounting truth can be discovered and inspected without direct SQL access.
 - [x] Add a tenant-scoped `get_journal_entry_reversal_chain` agent tool so original and reversal lineage can be audited end to end.
 - [x] Add automated tests for posted-entry list/detail/reversal-chain success and delegated tenant enforcement before exposing the tools live.
+- [x] Add tenant-scoped `list_audit_events` so audit and approval-history events can be queried by organization, entity, and event filters without direct SQL access.
+- [x] Add a tenant-scoped `get_entity_timeline` read model that combines `audit_logs` and `approval_actions` into one ordered entity history for draft/proposal/approval/journal entities.
+- [x] Add automated tests for audit-event listing, entity-timeline success, and delegated tenant enforcement before exposing the tools live.

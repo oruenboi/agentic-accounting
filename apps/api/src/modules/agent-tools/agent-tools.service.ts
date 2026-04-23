@@ -8,10 +8,12 @@ import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
 import { GetApprovalRequestInputDto } from '../journal-tools/dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from '../journal-tools/dto/get-agent-proposal.dto';
+import { GetEntityTimelineInputDto } from '../journal-tools/dto/get-entity-timeline.dto';
 import { GetJournalEntryInputDto } from '../journal-tools/dto/get-journal-entry.dto';
 import { GetJournalEntryReversalChainInputDto } from '../journal-tools/dto/get-journal-entry-reversal-chain.dto';
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
+import { ListAuditEventsInputDto } from '../journal-tools/dto/list-audit-events.dto';
 import { ListApprovalRequestsInputDto } from '../journal-tools/dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
 import { ListJournalEntriesInputDto } from '../journal-tools/dto/list-journal-entries.dto';
@@ -573,6 +575,82 @@ export class AgentToolsService {
           this.journalDraftService.getAgentProposal(input as GetAgentProposalInputDto, actor),
         summarize: (result) =>
           `Agent proposal ${(result as { proposal_id: string }).proposal_id} loaded successfully.`
+      },
+      {
+        name: 'list_audit_events',
+        description: 'Returns normalized audit and approval-history events for an organization with optional filters.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ListAuditEventsInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            entity_type: { type: 'string' },
+            entity_id: { type: 'string' },
+            event_name: { type: 'string' },
+            actor_type: { type: 'string', enum: ['user', 'agent', 'system'] },
+            request_id: { type: 'string' },
+            correlation_id: { type: 'string' },
+            from_timestamp: { type: 'string', format: 'date-time' },
+            to_timestamp: { type: 'string', format: 'date-time' },
+            limit: { type: 'number' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'actor_context', 'filters', 'items'],
+          properties: {
+            organization_id: { type: 'string' },
+            actor_context: { type: 'object' },
+            filters: { type: 'object' },
+            items: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.listAuditEvents(input as ListAuditEventsInputDto, actor),
+        summarize: (result) =>
+          `Audit event listing returned ${this.countItems(result)} item(s) for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'get_entity_timeline',
+        description: 'Returns a normalized entity timeline combining audit logs and approval-history events.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: GetEntityTimelineInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'entity_type', 'entity_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            entity_type: { type: 'string' },
+            entity_id: { type: 'string' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'entity_type', 'entity_id', 'actor_context', 'items'],
+          properties: {
+            organization_id: { type: 'string' },
+            entity_type: { type: 'string' },
+            entity_id: { type: 'string' },
+            actor_context: { type: 'object' },
+            items: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.getEntityTimeline(input as GetEntityTimelineInputDto, actor),
+        summarize: (result) =>
+          `Entity timeline loaded for ${(result as { entity_type: string }).entity_type} ${(result as { entity_id: string }).entity_id}.`
       },
       {
         name: 'list_journal_entries',
