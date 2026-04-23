@@ -78,3 +78,4 @@ last_reviewed: 2026-04-07
 - [x] Add an initial read-only `agent-tools` registry and execution API over the existing reporting/health services.
 - [x] Reuse current Supabase bearer auth and tenant checks for the first `agent-tools` slice, deferring non-user client auth.
 - [x] Add request/response envelope coverage for `agent-tools` schema, single execute, and batch execute flows.
+- [x] Add a bounded non-user `agent-tools` auth path using configured agent client credentials plus explicit delegated user context for tenant-scoped reads.

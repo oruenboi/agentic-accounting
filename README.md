@@ -51,10 +51,14 @@ Already scaffolded in code:
   - `GET /api/v1/reports/balance-sheet`
   - `GET /api/v1/reports/profit-and-loss`
   - `GET /api/v1/reports/general-ledger`
+  - `GET /api/v1/agent-tools/schema`
+  - `GET /api/v1/agent-tools/tool/:toolName`
+  - `POST /api/v1/agent-tools/execute`
+  - `POST /api/v1/agent-tools/execute-batch`
 
 Still to implement:
 - broader backend runtime services
-- agent tool execution layer
+- non-user client registry and stronger agent auth beyond the current bounded configured-client path
 - schedule runtime and reporting application services
 - idempotency and agent proposal runtime workflows
 - full write-path orchestration on top of the existing DB constraints
@@ -217,6 +221,14 @@ If you are here to implement the system, the next practical build order is:
 4. Call:
    - `GET /api/v1/health`
    - `GET /api/v1/reports/*` with a valid Supabase bearer token
+   - `GET /api/v1/agent-tools/schema` with either:
+     - a valid Supabase bearer token
+     - or configured agent headers:
+       - `x-agent-client-id`
+       - `x-agent-client-secret`
+
+For tenant-scoped `agent-tools` report reads with agent credentials, also send:
+- `x-delegated-auth-user-id`
 
 ## Status Notes
 

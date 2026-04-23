@@ -1,12 +1,12 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { CurrentActor } from '../auth/current-actor.decorator';
 import type { AuthenticatedActor, AuthenticatedRequest } from '../auth/authenticated-request.interface';
-import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import { AgentToolsAuthGuard } from '../auth/agent-tools-auth.guard';
 import { AgentToolBatchExecutionRequestDto, AgentToolExecutionRequestDto } from './dto/agent-tool-execution.dto';
 import { AgentToolsService } from './agent-tools.service';
 
 @Controller('agent-tools')
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(AgentToolsAuthGuard)
 export class AgentToolsController {
   constructor(private readonly agentToolsService: AgentToolsService) {}
 

@@ -31,6 +31,7 @@ interface AgentToolDefinition<TInput extends object = object, TResult = unknown>
   requires_approval: boolean;
   requires_tenant: boolean;
   idempotent: boolean;
+  delegated_user_required: boolean;
   input_dto?: new () => TInput;
   input_schema: ToolSchemaDescription;
   output_schema: ToolSchemaDescription;
@@ -73,6 +74,7 @@ export class AgentToolsService {
         mutability: tool.mutability,
         requires_approval: tool.requires_approval,
         requires_tenant: tool.requires_tenant,
+        delegated_user_required: tool.delegated_user_required,
         idempotent: tool.idempotent,
         input_schema: tool.input_schema,
         output_schema: tool.output_schema
@@ -94,6 +96,7 @@ export class AgentToolsService {
       mutability: tool.mutability,
       requires_approval: tool.requires_approval,
       requires_tenant: tool.requires_tenant,
+      delegated_user_required: tool.delegated_user_required,
       idempotent: tool.idempotent,
       input_schema: tool.input_schema,
       output_schema: tool.output_schema
@@ -134,6 +137,20 @@ export class AgentToolsService {
       );
     }
 
+    if (
+      tool.delegated_user_required &&
+      actor.actorType === 'agent' &&
+      (actor.delegatedAuthUserId === null || actor.delegatedAuthUserId === undefined || actor.delegatedAuthUserId === '')
+    ) {
+      return this.buildErrorEnvelope(
+        tool.name,
+        requestId,
+        request.correlation_id,
+        'INVALID_DELEGATION',
+        'Tenant-scoped agent tool execution requires x-delegated-auth-user-id.'
+      );
+    }
+
     try {
       const result = await tool.execute(validatedInput.value, actor);
       return {
@@ -149,7 +166,9 @@ export class AgentToolsService {
         machine_summary: {
           category: tool.category,
           mutability: tool.mutability,
-          requires_tenant: tool.requires_tenant
+          requires_tenant: tool.requires_tenant,
+          actor_type: actor.actorType,
+          delegated_user_required: tool.delegated_user_required
         }
       };
     } catch (error) {
@@ -194,6 +213,7 @@ export class AgentToolsService {
         mutability: 'read',
         requires_approval: false,
         requires_tenant: false,
+        delegated_user_required: false,
         idempotent: true,
         input_schema: {
           type: 'object',
@@ -219,6 +239,7 @@ export class AgentToolsService {
         mutability: 'read',
         requires_approval: false,
         requires_tenant: true,
+        delegated_user_required: true,
         idempotent: true,
         input_dto: TrialBalanceQueryDto,
         input_schema: {
@@ -251,6 +272,7 @@ export class AgentToolsService {
         mutability: 'read',
         requires_approval: false,
         requires_tenant: true,
+        delegated_user_required: true,
         idempotent: true,
         input_dto: BalanceSheetQueryDto,
         input_schema: {
@@ -283,6 +305,7 @@ export class AgentToolsService {
         mutability: 'read',
         requires_approval: false,
         requires_tenant: true,
+        delegated_user_required: true,
         idempotent: true,
         input_dto: ProfitAndLossQueryDto,
         input_schema: {
@@ -317,6 +340,7 @@ export class AgentToolsService {
         mutability: 'read',
         requires_approval: false,
         requires_tenant: true,
+        delegated_user_required: true,
         idempotent: true,
         input_dto: GeneralLedgerQueryDto,
         input_schema: {

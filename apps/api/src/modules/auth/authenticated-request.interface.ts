@@ -1,8 +1,13 @@
 import type { Request } from 'express';
 
 export interface AuthenticatedActor {
+  actorType: 'user' | 'agent';
   authUserId: string;
   email: string | null;
+  clientId?: string | null;
+  agentName?: string | null;
+  agentRunId?: string | null;
+  delegatedAuthUserId?: string | null;
 }
 
 export interface RequestActorContext {
@@ -17,4 +22,3 @@ export interface AuthenticatedRequest extends Request {
   actor?: AuthenticatedActor;
   requestId?: string;
 }
-

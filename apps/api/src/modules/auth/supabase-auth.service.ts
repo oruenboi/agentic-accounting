@@ -27,9 +27,13 @@ export class SupabaseAuthService {
     }
 
     return {
+      actorType: 'user',
       authUserId: data.user.id,
-      email: data.user.email ?? null
+      email: data.user.email ?? null,
+      clientId: null,
+      agentName: null,
+      agentRunId: null,
+      delegatedAuthUserId: null
     };
   }
 }
-
