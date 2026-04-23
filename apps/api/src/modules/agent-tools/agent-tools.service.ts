@@ -6,6 +6,7 @@ import type { AuthenticatedActor } from '../auth/authenticated-request.interface
 import { HealthService } from '../health/health.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
+import { GetAgentProposalInputDto } from '../journal-tools/dto/get-agent-proposal.dto';
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
@@ -422,6 +423,61 @@ export class AgentToolsService {
           this.journalValidationService.validateJournalEntry(input as ValidateJournalEntryInputDto, actor),
         summarize: (result) =>
           `Journal entry validation ${(result as { valid: boolean }).valid ? 'passed' : 'failed'} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'get_agent_proposal',
+        description: 'Returns one persisted agent proposal with linked draft context when present.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: GetAgentProposalInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'proposal_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            proposal_id: { type: 'string', format: 'uuid' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'proposal_id',
+            'proposal_type',
+            'status',
+            'title',
+            'actor_context',
+            'source',
+            'created_by',
+            'payload',
+            'metadata',
+            'created_at',
+            'updated_at'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            proposal_type: { type: 'string' },
+            status: { type: 'string' },
+            title: { type: 'string' },
+            actor_context: { type: 'object' },
+            source: { type: 'object' },
+            created_by: { type: 'object' },
+            target: { type: 'object' },
+            payload: { type: 'object' },
+            metadata: { type: 'object' },
+            created_at: { type: 'string' },
+            updated_at: { type: 'string' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.getAgentProposal(input as GetAgentProposalInputDto, actor),
+        summarize: (result) =>
+          `Agent proposal ${(result as { proposal_id: string }).proposal_id} loaded successfully.`
       },
       {
         name: 'list_agent_proposals',

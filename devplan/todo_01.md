@@ -94,3 +94,5 @@ last_reviewed: 2026-04-23
 - [x] Add automated tests for `get_journal_entry_draft` success and delegated tenant enforcement failures before exposing it live.
 - [x] Add a tenant-scoped `list_agent_proposals` agent tool so proposal-backed draft activity can be discovered without already knowing a proposal or draft ID.
 - [x] Add automated tests for `list_agent_proposals` success and delegated tenant enforcement failures before exposing it live.
+- [x] Add a tenant-scoped `get_agent_proposal` agent tool so one persisted proposal can be inspected in detail with linked draft context.
+- [x] Add automated tests for `get_agent_proposal` success and delegated tenant enforcement failures before exposing it live.

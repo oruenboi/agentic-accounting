@@ -315,4 +315,63 @@ describe('JournalDraftService', () => {
       })
     ]);
   });
+
+  it('returns a persisted agent proposal with linked draft context', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          proposal_id: 'proposal-1',
+          proposal_type: 'journal_entry',
+          status: 'needs_review',
+          title: 'Journal draft: Utilities accrual',
+          description: 'Utilities accrual',
+          source_agent_name: 'test-agent',
+          source_agent_run_id: 'run-1',
+          source_tool_name: 'create_journal_entry_draft',
+          source_request_id: 'request-1',
+          correlation_id: 'corr-1',
+          idempotency_key: 'idem-1',
+          target_entity_type: 'journal_entry_draft',
+          target_entity_id: 'draft-1',
+          payload: {
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001'
+          },
+          metadata: {
+            warnings: []
+          },
+          created_by_actor_type: 'agent',
+          created_by_actor_id: 'test-agent-client',
+          created_by_user_id: actorContext.appUserId,
+          created_at: '2026-04-23T10:00:00.000Z',
+          updated_at: '2026-04-23T10:00:00.000Z',
+          draft_number: 'JE-000001',
+          draft_status: 'validated'
+        }
+      ]
+    });
+
+    const result = await service.getAgentProposal(
+      {
+        organization_id: input.organization_id,
+        proposal_id: 'proposal-1'
+      },
+      actor
+    );
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, input.organization_id);
+    expect(result).toEqual(
+      expect.objectContaining({
+        proposal_id: 'proposal-1',
+        proposal_type: 'journal_entry',
+        target: {
+          entity_type: 'journal_entry_draft',
+          entity_id: 'draft-1',
+          draft_number: 'JE-000001',
+          draft_status: 'validated'
+        }
+      })
+    );
+  });
 });

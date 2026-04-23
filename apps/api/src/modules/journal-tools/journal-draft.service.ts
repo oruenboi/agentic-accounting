@@ -5,6 +5,7 @@ import { TenantAccessService } from '../auth/tenant-access.service';
 import { DatabaseService, type Queryable } from '../database/database.service';
 import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
+import { GetAgentProposalInputDto } from './dto/get-agent-proposal.dto';
 import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
 import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
@@ -80,6 +81,31 @@ interface ProposalListRow {
   target_entity_type: string | null;
   target_entity_id: string | null;
   draft_number: string | null;
+}
+
+interface ProposalDetailRow {
+  proposal_id: string;
+  proposal_type: string;
+  status: string;
+  title: string;
+  description: string | null;
+  source_agent_name: string | null;
+  source_agent_run_id: string | null;
+  source_tool_name: string | null;
+  source_request_id: string | null;
+  correlation_id: string | null;
+  idempotency_key: string | null;
+  target_entity_type: string | null;
+  target_entity_id: string | null;
+  payload: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_by_actor_type: string;
+  created_by_actor_id: string;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  draft_number: string | null;
+  draft_status: string | null;
 }
 
 @Injectable()
@@ -519,6 +545,90 @@ export class JournalDraftService {
         target_entity_id: row.target_entity_id,
         draft_number: row.draft_number
       }))
+    };
+  }
+
+  async getAgentProposal(input: GetAgentProposalInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const result = await this.databaseService.query<ProposalDetailRow>(
+      `
+        select
+          ap.id::text as proposal_id,
+          ap.proposal_type,
+          ap.status,
+          ap.title,
+          ap.description,
+          ap.source_agent_name,
+          ap.source_agent_run_id,
+          ap.source_tool_name,
+          ap.source_request_id,
+          ap.correlation_id,
+          ap.idempotency_key,
+          ap.target_entity_type,
+          ap.target_entity_id::text,
+          ap.payload,
+          ap.metadata,
+          ap.created_by_actor_type,
+          ap.created_by_actor_id,
+          ap.created_by_user_id::text,
+          ap.created_at::text,
+          ap.updated_at::text,
+          d.draft_number,
+          d.status as draft_status
+        from public.agent_proposals ap
+        left join public.journal_entry_drafts d
+          on ap.target_entity_type = 'journal_entry_draft'
+         and ap.target_entity_id = d.id
+        where ap.id = $1::uuid
+          and ap.organization_id = $2::uuid
+        limit 1
+      `,
+      [input.proposal_id, input.organization_id]
+    );
+
+    const proposal = result.rows[0];
+
+    if (proposal === undefined) {
+      throw new AppError(
+        'PROPOSAL_NOT_FOUND',
+        `Agent proposal ${input.proposal_id} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    return {
+      organization_id: input.organization_id,
+      proposal_id: proposal.proposal_id,
+      proposal_type: proposal.proposal_type,
+      status: proposal.status,
+      title: proposal.title,
+      description: proposal.description,
+      actor_context: actorContext,
+      source: {
+        agent_name: proposal.source_agent_name,
+        agent_run_id: proposal.source_agent_run_id,
+        tool_name: proposal.source_tool_name,
+        request_id: proposal.source_request_id,
+        correlation_id: proposal.correlation_id,
+        idempotency_key: proposal.idempotency_key
+      },
+      created_by: {
+        actor_type: proposal.created_by_actor_type,
+        actor_id: proposal.created_by_actor_id,
+        user_id: proposal.created_by_user_id
+      },
+      target: proposal.target_entity_type === null
+        ? null
+        : {
+            entity_type: proposal.target_entity_type,
+            entity_id: proposal.target_entity_id,
+            draft_number: proposal.draft_number,
+            draft_status: proposal.draft_status
+          },
+      payload: proposal.payload ?? {},
+      metadata: proposal.metadata ?? {},
+      created_at: proposal.created_at,
+      updated_at: proposal.updated_at
     };
   }
 

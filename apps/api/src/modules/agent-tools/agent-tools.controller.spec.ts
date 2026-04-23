@@ -34,7 +34,8 @@ describe('AgentToolsController', () => {
   const journalDraftService = {
     createJournalEntryDraft: jest.fn(),
     getJournalEntryDraft: jest.fn(),
-    listAgentProposals: jest.fn()
+    listAgentProposals: jest.fn(),
+    getAgentProposal: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -219,6 +220,50 @@ describe('AgentToolsController', () => {
       ]
     });
 
+    journalDraftService.getAgentProposal.mockResolvedValue({
+      organization_id: organizationId,
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      proposal_type: 'journal_entry',
+      status: 'needs_review',
+      title: 'Journal draft: Utilities accrual',
+      description: 'Utilities accrual',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      source: {
+        agent_name: 'test-agent',
+        agent_run_id: 'run-1',
+        tool_name: 'create_journal_entry_draft',
+        request_id: 'request-1',
+        correlation_id: 'corr-1',
+        idempotency_key: 'idem-1'
+      },
+      created_by: {
+        actor_type: 'agent',
+        actor_id: 'test-agent-client',
+        user_id: 'app-user-1'
+      },
+      target: {
+        entity_type: 'journal_entry_draft',
+        entity_id: '880e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001',
+        draft_status: 'validated'
+      },
+      payload: {
+        draft_id: '880e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001'
+      },
+      metadata: {
+        warnings: []
+      },
+      created_at: '2026-04-23T10:00:00.000Z',
+      updated_at: '2026-04-23T10:00:00.000Z'
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -299,6 +344,7 @@ describe('AgentToolsController', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'get_health_status' }),
         expect.objectContaining({ name: 'get_trial_balance' }),
+        expect.objectContaining({ name: 'get_agent_proposal' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' })
@@ -516,6 +562,33 @@ describe('AgentToolsController', () => {
             draft_number: 'JE-000001'
           })
         ]
+      })
+    );
+  });
+
+  it('returns one agent proposal for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_agent_proposal',
+        input: {
+          organization_id: organizationId,
+          proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getAgentProposal).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+        target: expect.objectContaining({
+          draft_number: 'JE-000001'
+        })
       })
     );
   });
