@@ -105,3 +105,6 @@ last_reviewed: 2026-04-23
 - [x] Add a tenant-scoped `post_approved_journal_entry` agent tool that commits an approved draft into immutable `journal_entries` and `journal_entry_lines`.
 - [x] Keep posting idempotent and update linked draft/proposal state plus posted-entity linkage when the journal entry commit succeeds.
 - [x] Add automated tests for posting success, replay, invalid draft/approval state, and delegated tenant enforcement before exposing it live.
+- [x] Add a tenant-scoped `reverse_posted_journal_entry` agent tool that creates a reversal journal entry and immutable reversal linkage without mutating posted lines.
+- [x] Keep reversal idempotent and update original/reversal entry state consistently while blocking duplicate reversals of the same original entry.
+- [x] Add automated tests for reversal success, replay, duplicate-reversal protection, invalid original-entry state, and delegated tenant enforcement before exposing it live.

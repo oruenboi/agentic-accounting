@@ -36,6 +36,13 @@ describe('JournalDraftService', () => {
     }
   };
 
+  const reversalInput = {
+    organization_id: input.organization_id,
+    journal_entry_id: 'entry-1',
+    reversal_date: '2026-04-24',
+    reason: 'Customer invoice voided'
+  };
+
   const actorContext = {
     appUserId: '10000000-0000-4000-8000-000000000002',
     authUserId: '11111111-1111-4111-8111-111111111111',
@@ -935,6 +942,244 @@ describe('JournalDraftService', () => {
       )
     ).rejects.toMatchObject({
       code: 'DRAFT_POST_INVALID_STATE'
+    });
+  });
+
+  it('creates a reversal journal entry and immutable reversal linkage for a posted journal entry', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-1',
+            entry_number: 'JE-000001',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            status: 'posted',
+            accounting_period_id: input.accounting_period_id,
+            reversal_of_journal_entry_id: null,
+            reversal_record_id: null,
+            reversal_journal_entry_id: null
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            accounting_period_id: input.accounting_period_id
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'posted-line-1',
+            line_number: 1,
+            account_id: input.lines[0].account_id,
+            description: null,
+            debit: '100.00',
+            credit: '0.00',
+            dimensions: {},
+            metadata: {}
+          },
+          {
+            id: 'posted-line-2',
+            line_number: 2,
+            account_id: input.lines[1].account_id,
+            description: null,
+            debit: '0.00',
+            credit: '100.00',
+            dimensions: {},
+            metadata: {}
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ prefix: 'JE', allocated_value: 2, padding_width: 6 }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-2',
+            entry_number: 'JE-000002',
+            posted_at: '2026-04-24T09:00:00.000Z'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_reversal_id: 'reversal-1'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.reversePostedJournalEntry(
+      reversalInput,
+      actor,
+      {
+        requestId: 'request-5',
+        correlationId: 'corr-5',
+        idempotencyKey: 'idem-reverse-1',
+        toolName: 'reverse_posted_journal_entry'
+      }
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        original_journal_entry_id: 'entry-1',
+        original_entry_number: 'JE-000001',
+        reversal_journal_entry_id: 'entry-2',
+        reversal_entry_number: 'JE-000002',
+        journal_entry_reversal_id: 'reversal-1',
+        status: 'reversed',
+        reversal_status: 'posted',
+        reason: 'Customer invoice voided',
+        line_count: 2
+      })
+    );
+    expect(query).toHaveBeenCalledTimes(11);
+  });
+
+  it('replays a succeeded reversal response when the same payload is retried', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const replayedResponse = {
+      reversal_journal_entry_id: 'entry-2',
+      reversal_entry_number: 'JE-000002',
+      status: 'reversed'
+    };
+    const requestHash = (
+      service as unknown as { hashRequestPayload: (value: typeof reversalInput) => string }
+    ).hashRequestPayload(reversalInput);
+
+    const query = jest.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          request_hash: requestHash,
+          status: 'succeeded',
+          response_body: replayedResponse
+        }
+      ]
+    });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    const result = await service.reversePostedJournalEntry(
+      reversalInput,
+      actor,
+      {
+        requestId: 'request-5',
+        correlationId: 'corr-5',
+        idempotencyKey: 'idem-reverse-1',
+        toolName: 'reverse_posted_journal_entry'
+      }
+    );
+
+    expect(result).toBe(replayedResponse);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects reversal when the journal entry has already been reversed', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-1',
+            entry_number: 'JE-000001',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            status: 'posted',
+            accounting_period_id: input.accounting_period_id,
+            reversal_of_journal_entry_id: null,
+            reversal_record_id: 'reversal-1',
+            reversal_journal_entry_id: 'entry-2'
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.reversePostedJournalEntry(
+        reversalInput,
+        actor,
+        {
+          requestId: 'request-5',
+          correlationId: 'corr-5',
+          idempotencyKey: 'idem-reverse-1',
+          toolName: 'reverse_posted_journal_entry'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'REVERSAL_NOT_ALLOWED'
+    });
+  });
+
+  it('rejects reversal when the original journal entry is not posted', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-1',
+            entry_number: 'JE-000001',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            status: 'reversed',
+            accounting_period_id: input.accounting_period_id,
+            reversal_of_journal_entry_id: null,
+            reversal_record_id: null,
+            reversal_journal_entry_id: null
+          }
+        ]
+      });
+
+    databaseService.withTransaction.mockImplementation(async (callback: (runner: { query: typeof query }) => unknown) =>
+      callback({ query })
+    );
+
+    await expect(
+      service.reversePostedJournalEntry(
+        reversalInput,
+        actor,
+        {
+          requestId: 'request-5',
+          correlationId: 'corr-5',
+          idempotencyKey: 'idem-reverse-1',
+          toolName: 'reverse_posted_journal_entry'
+        }
+      )
+    ).rejects.toMatchObject({
+      code: 'REVERSAL_NOT_ALLOWED'
     });
   });
 });

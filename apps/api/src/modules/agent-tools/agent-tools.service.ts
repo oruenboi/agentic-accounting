@@ -13,6 +13,7 @@ import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListApprovalRequestsInputDto } from '../journal-tools/dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
 import { PostApprovedJournalEntryInputDto } from '../journal-tools/dto/post-approved-journal-entry.dto';
+import { ReversePostedJournalEntryInputDto } from '../journal-tools/dto/reverse-posted-journal-entry.dto';
 import { ResolveApprovalRequestInputDto } from '../journal-tools/dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from '../journal-tools/dto/submit-journal-entry-draft-for-approval.dto';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
@@ -803,6 +804,78 @@ export class AgentToolsService {
         },
         summarize: (result) =>
           `Posted journal entry ${(result as { entry_number: string }).entry_number} from draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id}.`
+      },
+      {
+        name: 'reverse_posted_journal_entry',
+        description: 'Creates an immutable reversal journal entry linked to an existing posted journal entry.',
+        category: 'commit',
+        mutability: 'commit',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ReversePostedJournalEntryInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'journal_entry_id', 'reversal_date', 'reason'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            journal_entry_id: { type: 'string', format: 'uuid' },
+            reversal_date: { type: 'string', format: 'date' },
+            reason: { type: 'string' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'original_journal_entry_id',
+            'original_entry_number',
+            'reversal_journal_entry_id',
+            'reversal_entry_number',
+            'journal_entry_reversal_id',
+            'actor_context',
+            'status',
+            'reversal_status',
+            'reversal_date',
+            'reason',
+            'line_count',
+            'posted_at'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            original_journal_entry_id: { type: 'string', format: 'uuid' },
+            original_entry_number: { type: 'string' },
+            reversal_journal_entry_id: { type: 'string', format: 'uuid' },
+            reversal_entry_number: { type: 'string' },
+            journal_entry_reversal_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            reversal_status: { type: 'string' },
+            reversal_date: { type: 'string' },
+            reason: { type: 'string' },
+            line_count: { type: 'number' },
+            posted_at: { type: 'string' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.reversePostedJournalEntry(
+            input as ReversePostedJournalEntryInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Created reversal ${(result as { reversal_entry_number: string }).reversal_entry_number} for journal entry ${(result as { original_entry_number: string }).original_entry_number}.`
       },
       {
         name: 'resolve_approval_request',

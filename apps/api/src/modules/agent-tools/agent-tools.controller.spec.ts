@@ -41,7 +41,8 @@ describe('AgentToolsController', () => {
     listApprovalRequests: jest.fn(),
     getApprovalRequest: jest.fn(),
     resolveApprovalRequest: jest.fn(),
-    postApprovedJournalEntry: jest.fn()
+    postApprovedJournalEntry: jest.fn(),
+    reversePostedJournalEntry: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -426,6 +427,28 @@ describe('AgentToolsController', () => {
       line_count: 2
     });
 
+    journalDraftService.reversePostedJournalEntry.mockResolvedValue({
+      organization_id: organizationId,
+      original_journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+      original_entry_number: 'JE-000001',
+      reversal_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000',
+      reversal_entry_number: 'JE-000002',
+      journal_entry_reversal_id: 'dd0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'reversed',
+      reversal_status: 'posted',
+      reversal_date: '2026-04-24',
+      reason: 'Customer invoice voided',
+      line_count: 2,
+      posted_at: '2026-04-24T09:00:00.000Z'
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -511,6 +534,7 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'list_approval_requests' }),
         expect.objectContaining({ name: 'post_approved_journal_entry' }),
+        expect.objectContaining({ name: 'reverse_posted_journal_entry' }),
         expect.objectContaining({ name: 'resolve_approval_request' }),
         expect.objectContaining({ name: 'get_journal_entry_draft' }),
         expect.objectContaining({ name: 'create_journal_entry_draft' }),
@@ -934,6 +958,98 @@ describe('AgentToolsController', () => {
     expect(response.body.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: 'DRAFT_POST_INVALID_STATE' })
+      ])
+    );
+  });
+
+  it('reverses posted journal entries for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'reverse_posted_journal_entry',
+        idempotency_key: 'idem-reverse-posted-journal-entry',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+          reversal_date: '2026-04-24',
+          reason: 'Customer invoice voided'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.reversePostedJournalEntry).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        original_entry_number: 'JE-000001',
+        reversal_entry_number: 'JE-000002',
+        status: 'reversed'
+      })
+    );
+  });
+
+  it('returns invalid state errors when reversal is attempted for an ineligible posted entry', async () => {
+    journalDraftService.reversePostedJournalEntry.mockRejectedValueOnce(
+      new AppError(
+        'REVERSAL_NOT_ALLOWED',
+        'Journal entry bb0e8400-e29b-41d4-a716-446655440000 has already been reversed by entry cc0e8400-e29b-41d4-a716-446655440000.'
+      )
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'reverse_posted_journal_entry',
+        idempotency_key: 'idem-reverse-posted-journal-entry-invalid',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+          reversal_date: '2026-04-24',
+          reason: 'Customer invoice voided'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'REVERSAL_NOT_ALLOWED' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated reversal fails membership checks', async () => {
+    journalDraftService.reversePostedJournalEntry.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'reverse_posted_journal_entry',
+        idempotency_key: 'idem-reverse-posted-journal-entry-denied',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+          reversal_date: '2026-04-24',
+          reason: 'Customer invoice voided'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
       ])
     );
   });

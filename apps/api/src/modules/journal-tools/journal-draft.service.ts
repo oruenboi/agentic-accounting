@@ -11,6 +11,7 @@ import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto'
 import { ListApprovalRequestsInputDto } from './dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
 import { PostApprovedJournalEntryInputDto } from './dto/post-approved-journal-entry.dto';
+import { ReversePostedJournalEntryInputDto } from './dto/reverse-posted-journal-entry.dto';
 import { ResolveApprovalRequestInputDto } from './dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from './dto/submit-journal-entry-draft-for-approval.dto';
 import type { ValidateJournalEntryLineDto } from './dto/validate-journal-entry.dto';
@@ -189,6 +190,39 @@ interface JournalEntryRow {
   journal_entry_id: string;
   entry_number: string;
   posted_at: string;
+}
+
+interface OriginalJournalEntryRow {
+  journal_entry_id: string;
+  entry_number: string;
+  entry_date: string;
+  memo: string | null;
+  source_type: string;
+  source_id: string | null;
+  status: string;
+  accounting_period_id: string | null;
+  reversal_of_journal_entry_id: string | null;
+  reversal_record_id: string | null;
+  reversal_journal_entry_id: string | null;
+}
+
+interface JournalEntryLineDetailRow {
+  id: string;
+  line_number: number;
+  account_id: string;
+  description: string | null;
+  debit: string;
+  credit: string;
+  dimensions: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface AccountingPeriodRow {
+  accounting_period_id: string;
+}
+
+interface JournalEntryReversalRow {
+  journal_entry_reversal_id: string;
 }
 
 @Injectable()
@@ -1812,6 +1846,388 @@ export class JournalDraftService {
         `,
         [
           journalEntry.journal_entry_id,
+          JSON.stringify(response),
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.idempotencyKey,
+          context.toolName
+        ]
+      );
+
+      return response;
+    });
+  }
+
+  async reversePostedJournalEntry(
+    input: ReversePostedJournalEntryInputDto,
+    actor: AuthenticatedActor,
+    context: ToolRequestContext
+  ) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const requestHash = this.hashRequestPayload(input);
+    const actorType = actor.actorType;
+    const actorId = this.resolveActorId(actor);
+
+    return this.databaseService.withTransaction(async (client) => {
+      const existing = await this.loadIdempotencyRecord(
+        client,
+        actorContext.firmId,
+        input.organization_id,
+        actorType,
+        actorId,
+        context.idempotencyKey,
+        context.toolName
+      );
+
+      if (existing !== null) {
+        if (existing.request_hash !== requestHash) {
+          throw new AppError(
+            'IDEMPOTENCY_CONFLICT',
+            'The supplied idempotency_key was already used with a different reverse_posted_journal_entry payload.'
+          );
+        }
+
+        if (existing.status === 'succeeded' && existing.response_body !== null) {
+          return existing.response_body;
+        }
+
+        throw new AppError(
+          'IDEMPOTENCY_CONFLICT',
+          `The supplied idempotency_key is already reserved for reverse_posted_journal_entry with status ${existing.status}.`
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.idempotency_keys (
+            firm_id,
+            organization_id,
+            actor_type,
+            actor_id,
+            request_id,
+            idempotency_key,
+            operation_name,
+            request_hash,
+            normalized_payload,
+            status
+          )
+          values ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, 'pending')
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actorType,
+          actorId,
+          context.requestId,
+          context.idempotencyKey,
+          context.toolName,
+          requestHash,
+          JSON.stringify(this.normalizePayload(input))
+        ]
+      );
+
+      const originalEntryResult = await client.query<OriginalJournalEntryRow>(
+        `
+          select
+            je.id::text as journal_entry_id,
+            je.entry_number,
+            je.entry_date::text,
+            je.memo,
+            je.source_type,
+            je.source_id,
+            je.status,
+            je.accounting_period_id::text,
+            je.reversal_of_journal_entry_id::text,
+            jer.id::text as reversal_record_id,
+            jer.reversal_journal_entry_id::text
+          from public.journal_entries je
+          left join public.journal_entry_reversals jer
+            on jer.original_journal_entry_id = je.id
+          where je.id = $1::uuid
+            and je.organization_id = $2::uuid
+          limit 1
+        `,
+        [input.journal_entry_id, input.organization_id]
+      );
+
+      const originalEntry = originalEntryResult.rows[0];
+
+      if (originalEntry === undefined) {
+        throw new AppError(
+          'JOURNAL_ENTRY_NOT_FOUND',
+          `Journal entry ${input.journal_entry_id} was not found for organization ${input.organization_id}.`
+        );
+      }
+
+      if (originalEntry.status !== 'posted') {
+        throw new AppError(
+          'REVERSAL_NOT_ALLOWED',
+          `Journal entry ${input.journal_entry_id} must be in posted status before it can be reversed.`
+        );
+      }
+
+      if (originalEntry.reversal_of_journal_entry_id !== null) {
+        throw new AppError(
+          'REVERSAL_NOT_ALLOWED',
+          `Journal entry ${input.journal_entry_id} is itself a reversal entry and cannot be reversed again.`
+        );
+      }
+
+      if (originalEntry.reversal_record_id !== null) {
+        throw new AppError(
+          'REVERSAL_NOT_ALLOWED',
+          `Journal entry ${input.journal_entry_id} has already been reversed by entry ${originalEntry.reversal_journal_entry_id}.`
+        );
+      }
+
+      const periodResult = await client.query<AccountingPeriodRow>(
+        `
+          select ap.id::text as accounting_period_id
+          from public.accounting_periods ap
+          where ap.organization_id = $1::uuid
+            and ap.status = 'open'
+            and $2::date between ap.period_start and ap.period_end
+          order by ap.period_start asc
+          limit 1
+        `,
+        [input.organization_id, input.reversal_date]
+      );
+
+      const accountingPeriodId = periodResult.rows[0]?.accounting_period_id;
+
+      if (accountingPeriodId === undefined) {
+        throw new AppError(
+          'PERIOD_LOCKED',
+          `No open accounting period was found for organization ${input.organization_id} on ${input.reversal_date}.`
+        );
+      }
+
+      const linesResult = await client.query<JournalEntryLineDetailRow>(
+        `
+          select
+            jel.id::text,
+            jel.line_number,
+            jel.account_id::text,
+            jel.description,
+            jel.debit::text,
+            jel.credit::text,
+            jel.dimensions,
+            jel.metadata
+          from public.journal_entry_lines jel
+          where jel.journal_entry_id = $1::uuid
+          order by jel.line_number asc
+        `,
+        [input.journal_entry_id]
+      );
+
+      if (linesResult.rows.length < 2) {
+        throw new AppError(
+          'REVERSAL_NOT_ALLOWED',
+          `Journal entry ${input.journal_entry_id} does not have enough posted lines to reverse.`
+        );
+      }
+
+      const entryNumber = await this.allocateDraftNumber(client, input.organization_id);
+
+      const reversalEntryInsert = await client.query<JournalEntryRow>(
+        `
+          insert into public.journal_entries (
+            firm_id,
+            organization_id,
+            accounting_period_id,
+            draft_id,
+            entry_number,
+            entry_date,
+            memo,
+            source_type,
+            source_id,
+            status,
+            posted_by_actor_type,
+            posted_by_actor_id,
+            posted_by_user_id,
+            reversal_of_journal_entry_id,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            null,
+            $4,
+            $5::date,
+            $6,
+            'journal_entry_reversal',
+            $7,
+            'posted',
+            $8,
+            $9,
+            $10::uuid,
+            $11::uuid,
+            $12::jsonb
+          )
+          returning id::text as journal_entry_id, entry_number, posted_at::text
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          accountingPeriodId,
+          entryNumber,
+          input.reversal_date,
+          `Reversal of ${originalEntry.entry_number}: ${input.reason}`,
+          originalEntry.journal_entry_id,
+          actorType,
+          actorId,
+          actorContext.appUserId,
+          originalEntry.journal_entry_id,
+          JSON.stringify({
+            original_journal_entry_id: originalEntry.journal_entry_id,
+            original_entry_number: originalEntry.entry_number,
+            original_entry_date: originalEntry.entry_date,
+            reason: input.reason,
+            source_request_id: context.requestId,
+            correlation_id: context.correlationId,
+            idempotency_key: context.idempotencyKey
+          })
+        ]
+      );
+
+      const reversalEntry = reversalEntryInsert.rows[0];
+
+      if (reversalEntry === undefined) {
+        throw new AppError('REVERSAL_NOT_ALLOWED', 'Failed to create the reversal journal entry.');
+      }
+
+      for (const line of linesResult.rows) {
+        await client.query(
+          `
+            insert into public.journal_entry_lines (
+              journal_entry_id,
+              line_number,
+              account_id,
+              description,
+              debit,
+              credit,
+              dimensions,
+              metadata
+            )
+            values (
+              $1::uuid,
+              $2,
+              $3::uuid,
+              $4,
+              $5,
+              $6,
+              $7::jsonb,
+              $8::jsonb
+            )
+          `,
+          [
+            reversalEntry.journal_entry_id,
+            line.line_number,
+            line.account_id,
+            line.description ?? `Reversal of line ${line.line_number}`,
+            Number(line.credit),
+            Number(line.debit),
+            JSON.stringify(line.dimensions ?? {}),
+            JSON.stringify({
+              ...(line.metadata ?? {}),
+              reversed_from_journal_entry_line_id: line.id
+            })
+          ]
+        );
+      }
+
+      const reversalRecordInsert = await client.query<JournalEntryReversalRow>(
+        `
+          insert into public.journal_entry_reversals (
+            firm_id,
+            organization_id,
+            original_journal_entry_id,
+            reversal_journal_entry_id,
+            reversal_date,
+            reason,
+            created_by_actor_type,
+            created_by_actor_id,
+            created_by_user_id,
+            approval_request_id,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4::uuid,
+            $5::date,
+            $6,
+            $7,
+            $8,
+            $9::uuid,
+            null,
+            $10::jsonb
+          )
+          returning id::text as journal_entry_reversal_id
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          originalEntry.journal_entry_id,
+          reversalEntry.journal_entry_id,
+          input.reversal_date,
+          input.reason,
+          actorType,
+          actorId,
+          actorContext.appUserId,
+          JSON.stringify({
+            source_request_id: context.requestId,
+            correlation_id: context.correlationId,
+            idempotency_key: context.idempotencyKey
+          })
+        ]
+      );
+
+      const reversalRecord = reversalRecordInsert.rows[0];
+
+      if (reversalRecord === undefined) {
+        throw new AppError('REVERSAL_NOT_ALLOWED', 'Failed to create the journal reversal link.');
+      }
+
+      const response = {
+        organization_id: input.organization_id,
+        original_journal_entry_id: originalEntry.journal_entry_id,
+        original_entry_number: originalEntry.entry_number,
+        reversal_journal_entry_id: reversalEntry.journal_entry_id,
+        reversal_entry_number: reversalEntry.entry_number,
+        journal_entry_reversal_id: reversalRecord.journal_entry_reversal_id,
+        actor_context: actorContext,
+        status: 'reversed',
+        reversal_status: 'posted',
+        reversal_date: input.reversal_date,
+        reason: input.reason,
+        line_count: linesResult.rows.length,
+        posted_at: reversalEntry.posted_at
+      };
+
+      await client.query(
+        `
+          update public.idempotency_keys
+          set
+            status = 'succeeded',
+            resource_type = 'journal_entry_reversal',
+            resource_id = $1,
+            response_code = 201,
+            response_body = $2::jsonb,
+            last_seen_at = now()
+          where firm_id = $3::uuid
+            and organization_id = $4::uuid
+            and actor_type = $5
+            and actor_id = $6
+            and idempotency_key = $7
+            and operation_name = $8
+        `,
+        [
+          reversalRecord.journal_entry_reversal_id,
           JSON.stringify(response),
           actorContext.firmId,
           input.organization_id,
