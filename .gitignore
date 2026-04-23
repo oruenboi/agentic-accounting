@@ -7,3 +7,6 @@ apps/*/.env.local
 npm-debug.log*
 *.tsbuildinfo
 infra/supabase/seeds/generated/
+
+# Local Netlify folder
+.netlify

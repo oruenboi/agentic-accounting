@@ -21,3 +21,4 @@ last_reviewed: 2026-04-23
 - [x] Update the OSS-facing docs once the first operator-console slice is in place.
 - [x] Add a minimal production build/deploy path for `apps/web` so the operator console can be served on `accounting.nexiuslabs.com` without disturbing the live API deployment.
 - [x] Extend the VPS deployment docs and Caddy examples to cover the split-domain setup: `accounting.nexiuslabs.com` for web and `api.nexiuslabs.com` for the API.
+- [x] Add a Netlify deployment path for `apps/web` so the static operator console can be hosted separately from the VPS while keeping `api.nexiuslabs.com` as the backend origin.

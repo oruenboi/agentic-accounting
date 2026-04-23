@@ -327,6 +327,20 @@ WEB_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
 TLS_EMAIL=agent@nexiuslabs.com
 ```
 
+## Operator Console Netlify Deploy
+
+`apps/web` can also be deployed separately on Netlify while keeping the API on the VPS.
+
+- Netlify config lives at [apps/web/netlify.toml](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\apps\web\netlify.toml)
+- publish target: `dist`
+- build command: `npm install && npm run build`
+
+Recommended production environment variable:
+
+```text
+VITE_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
+```
+
 ## Status Notes
 
 The documentation inventory is intentionally kept up to date in `devplan/`. When the implementation catches up, the repo can move from planning-first to runtime-first without changing the architecture.
