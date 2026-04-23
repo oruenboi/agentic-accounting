@@ -8,7 +8,9 @@ import { useOperatorSession } from '../session/OperatorSessionContext';
 export function SessionPage({ onSaved }: { onSaved?: () => void }) {
   const navigate = useNavigate();
   const { session, setSession } = useOperatorSession();
-  const [apiBaseUrl, setApiBaseUrl] = useState(session?.apiBaseUrl ?? 'https://api.nexiuslabs.com');
+  const [apiBaseUrl, setApiBaseUrl] = useState(
+    session?.apiBaseUrl ?? import.meta.env.VITE_DEFAULT_API_BASE_URL ?? 'https://api.nexiuslabs.com'
+  );
   const [bearerToken, setBearerToken] = useState(session?.bearerToken ?? '');
   const [organizationId, setOrganizationId] = useState(session?.organizationId ?? '10000000-0000-4000-8000-000000000003');
   const [periodId, setPeriodId] = useState(session?.periodId ?? '');

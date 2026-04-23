@@ -301,6 +301,32 @@ The current console supports:
 - posted journal entry list/detail
 - entity audit timeline review
 
+The session bootstrap will prefill the API base URL from `VITE_DEFAULT_API_BASE_URL` when present. For the intended production deployment, use:
+
+```text
+VITE_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
+```
+
+## Operator Console VPS Deploy
+
+The split-domain production target is:
+
+```text
+https://api.nexiuslabs.com
+https://accounting.nexiuslabs.com
+```
+
+Use the production stack under [infra/docker/operator-console](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\infra\docker\operator-console) to deploy both services behind one Caddy instance.
+
+Recommended values:
+
+```text
+API_DOMAIN=api.nexiuslabs.com
+WEB_DOMAIN=accounting.nexiuslabs.com
+WEB_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
+TLS_EMAIL=agent@nexiuslabs.com
+```
+
 ## Status Notes
 
 The documentation inventory is intentionally kept up to date in `devplan/`. When the implementation catches up, the repo can move from planning-first to runtime-first without changing the architecture.
