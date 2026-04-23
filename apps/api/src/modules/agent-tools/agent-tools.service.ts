@@ -12,6 +12,7 @@ import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-e
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListApprovalRequestsInputDto } from '../journal-tools/dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
+import { PostApprovedJournalEntryInputDto } from '../journal-tools/dto/post-approved-journal-entry.dto';
 import { ResolveApprovalRequestInputDto } from '../journal-tools/dto/resolve-approval-request.dto';
 import { SubmitJournalEntryDraftForApprovalInputDto } from '../journal-tools/dto/submit-journal-entry-draft-for-approval.dto';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
@@ -736,6 +737,72 @@ export class AgentToolsService {
         },
         summarize: (result) =>
           `Created journal draft ${(result as { draft_number: string }).draft_number} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'post_approved_journal_entry',
+        description: 'Posts an approved journal draft into immutable journal entry records.',
+        category: 'commit',
+        mutability: 'commit',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: PostApprovedJournalEntryInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'draft_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            draft_id: { type: 'string', format: 'uuid' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'journal_entry_id',
+            'entry_number',
+            'actor_context',
+            'status',
+            'draft_status',
+            'proposal_status',
+            'posted_at',
+            'line_count'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            journal_entry_id: { type: 'string', format: 'uuid' },
+            entry_number: { type: 'string' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            draft_status: { type: 'string' },
+            proposal_status: { type: 'string' },
+            posted_at: { type: 'string' },
+            line_count: { type: 'number' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.postApprovedJournalEntry(
+            input as PostApprovedJournalEntryInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Posted journal entry ${(result as { entry_number: string }).entry_number} from draft ${(result as { draft_number: string | null }).draft_number ?? (result as { draft_id: string }).draft_id}.`
       },
       {
         name: 'resolve_approval_request',
