@@ -120,6 +120,36 @@ Current local sequence:
 
 The report endpoints require a valid Supabase bearer token and organization access in the database.
 
+### Current tenant bootstrap path
+After migrations, render a deterministic minimal tenant seed before testing tenant-scoped tools:
+
+```powershell
+npm run seed:render:minimal --workspace @agentic-accounting/api -- `
+  --auth-user-id 11111111-1111-4111-8111-111111111111 `
+  --user-email agent@nexiuslabs.com `
+  --out infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
+```
+
+Then apply it to the target database:
+
+```bash
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
+```
+
+What this bootstrap creates:
+- one active firm
+- one active app user mapped to the supplied `auth_user_id`
+- one active firm membership
+- one active organization
+- one active organization membership
+- one open accounting period
+- a minimal chart of accounts suitable for report reads and `validate_journal_entry`
+
+Operational note:
+- use a real Supabase `auth.users.id` UUID if you want bearer-token flows for that user
+- generated seed output is ignored by Git and can be re-rendered safely
+- the SQL is idempotent and can be re-applied after environment rebuilds
+
 ### Current minimal VPS production path
 For the first production deployment, keep the footprint to the accounting API only:
 - build and run `apps/api` in Docker
@@ -152,6 +182,7 @@ Recommended order:
 
 Operational rule:
 - never deploy the application before the migrations required by that release are in place
+- never treat an empty tenant database as a runtime bug until the bootstrap seed has been rendered and applied
 
 ## Service Startup Flow
 

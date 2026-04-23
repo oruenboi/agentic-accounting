@@ -1,7 +1,7 @@
 ---
 owner: Codex
 status: in_progress
-last_reviewed: 2026-04-07
+last_reviewed: 2026-04-23
 ---
 
 # TODO 01
@@ -83,3 +83,6 @@ last_reviewed: 2026-04-07
 - [x] Add automated tests for delegated tenant enforcement failures on tenant-scoped `agent-tools` reads.
 - [x] Add a non-mutating `validate_journal_entry` agent tool that checks tenant/account/period/balance rules without creating ledger rows.
 - [x] Add API tests for `validate_journal_entry` success and validation-failure paths before any draft-creation tool is introduced.
+- [x] Add a deterministic minimal tenant bootstrap seed generator covering firm, user, memberships, organization, accounts, and one open accounting period.
+- [x] Add automated tests for the minimal tenant bootstrap seed output so required entities and idempotent inserts stay stable.
+- [x] Document the bootstrap seed render/apply flow for local and VPS usage, including the required `auth_user_id` input.

@@ -6,3 +6,4 @@ apps/*/.env
 apps/*/.env.local
 npm-debug.log*
 *.tsbuildinfo
+infra/supabase/seeds/generated/

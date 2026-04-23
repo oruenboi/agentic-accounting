@@ -45,6 +45,7 @@ Already scaffolded in code:
 - npm workspace root
 - `apps/api` NestJS runtime skeleton
 - Supabase-backed auth verification and tenant access checks
+- deterministic minimal tenant bootstrap seed rendering for first usable firm/org/user/account data
 - Postgres-backed reporting endpoints for:
   - `GET /api/v1/health`
   - `GET /api/v1/reports/trial-balance`
@@ -229,6 +230,38 @@ If you are here to implement the system, the next practical build order is:
 
 For tenant-scoped `agent-tools` report reads with agent credentials, also send:
 - `x-delegated-auth-user-id`
+
+## Minimal Tenant Bootstrap
+
+The API now includes a deterministic seed renderer for the smallest usable tenant context:
+- one firm
+- one app user mapped to a supplied `auth_user_id`
+- one organization
+- one firm membership and one organization membership
+- one open accounting period
+- a minimal chart of accounts
+
+Render the SQL from the repo root:
+
+```powershell
+npm run seed:render:minimal --workspace @agentic-accounting/api -- `
+  --auth-user-id 11111111-1111-4111-8111-111111111111 `
+  --user-email agent@nexiuslabs.com `
+  --out infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
+```
+
+Important:
+- use a real Supabase `auth.users.id` UUID if you want bearer-token flows to work for the seeded user
+- the generated SQL is idempotent and safe to re-apply
+- generated seed output under `infra/supabase/seeds/generated/` is ignored by Git
+
+Apply the rendered SQL after migrations:
+
+```bash
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
+```
+
+Once applied, the live API can satisfy tenant-scoped report reads and `validate_journal_entry` calls instead of failing on empty tenant data.
 
 ## Status Notes
 
