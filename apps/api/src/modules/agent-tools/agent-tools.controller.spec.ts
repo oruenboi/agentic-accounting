@@ -7,6 +7,7 @@ import { AgentToolsAuthGuard } from '../auth/agent-tools-auth.guard';
 import { AgentClientAuthService } from '../auth/agent-client-auth.service';
 import { SupabaseAuthService } from '../auth/supabase-auth.service';
 import { HealthService } from '../health/health.service';
+import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ReportsService } from '../reports/reports.service';
 
@@ -28,6 +29,10 @@ describe('AgentToolsController', () => {
 
   const journalValidationService = {
     validateJournalEntry: jest.fn()
+  };
+
+  const journalDraftService = {
+    createJournalEntryDraft: jest.fn()
   };
 
   const supabaseAuthService = {
@@ -89,6 +94,41 @@ describe('AgentToolsController', () => {
       }
     });
 
+    journalDraftService.createJournalEntryDraft.mockResolvedValue({
+      organization_id: organizationId,
+      draft_id: '880e8400-e29b-41d4-a716-446655440000',
+      draft_number: 'JE-000001',
+      proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      status: 'validated',
+      requires_approval: false,
+      entry_date: '2026-04-01',
+      line_count: 2,
+      validation_result: {
+        balanced: true,
+        account_count: 2,
+        period: {
+          id: 'period-1',
+          status: 'open'
+        }
+      },
+      impact_preview: {
+        line_count: 2,
+        total_debit: 100,
+        total_credit: 100,
+        account_ids: [
+          '660e8400-e29b-41d4-a716-446655440000',
+          '770e8400-e29b-41d4-a716-446655440000'
+        ]
+      }
+    });
+
     supabaseAuthService.verifyAccessToken.mockResolvedValue({
       actorType: 'user',
       authUserId: delegatedAuthUserId,
@@ -125,6 +165,10 @@ describe('AgentToolsController', () => {
         {
           provide: JournalValidationService,
           useValue: journalValidationService
+        },
+        {
+          provide: JournalDraftService,
+          useValue: journalDraftService
         },
         {
           provide: SupabaseAuthService,
@@ -164,7 +208,8 @@ describe('AgentToolsController', () => {
     expect(response.body.result.tools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'get_health_status' }),
-        expect.objectContaining({ name: 'get_trial_balance' })
+        expect.objectContaining({ name: 'get_trial_balance' }),
+        expect.objectContaining({ name: 'create_journal_entry_draft' })
       ])
     );
   });
@@ -280,6 +325,46 @@ describe('AgentToolsController', () => {
     expect(response.body.ok).toBe(true);
     expect(journalValidationService.validateJournalEntry).toHaveBeenCalled();
     expect(response.body.result.valid).toBe(true);
+  });
+
+  it('creates journal entry drafts for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'create_journal_entry_draft',
+        idempotency_key: 'idem-create-journal-entry-draft',
+        input: {
+          organization_id: organizationId,
+          entry_date: '2026-04-01',
+          source_type: 'manual_adjustment',
+          memo: 'Utilities accrual',
+          lines: [
+            {
+              account_id: '660e8400-e29b-41d4-a716-446655440000',
+              debit: 100,
+              credit: 0
+            },
+            {
+              account_id: '770e8400-e29b-41d4-a716-446655440000',
+              debit: 0,
+              credit: 100
+            }
+          ]
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.createJournalEntryDraft).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        draft_number: 'JE-000001',
+        proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+      })
+    );
   });
 
   it('returns validation errors for invalid journal entry payloads', async () => {

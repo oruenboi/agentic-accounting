@@ -86,3 +86,7 @@ last_reviewed: 2026-04-23
 - [x] Add a deterministic minimal tenant bootstrap seed generator covering firm, user, memberships, organization, accounts, and one open accounting period.
 - [x] Add automated tests for the minimal tenant bootstrap seed output so required entities and idempotent inserts stay stable.
 - [x] Document the bootstrap seed render/apply flow for local and VPS usage, including the required `auth_user_id` input.
+- [x] Add a durable `create_journal_entry_draft` agent tool that writes journal drafts and lines for validated tenant-scoped requests.
+- [x] Add minimal application-layer idempotency handling for `create_journal_entry_draft`, including replay on matching succeeded requests and conflict on mismatched payload reuse.
+- [x] Persist a linked `agent_proposals` record when `create_journal_entry_draft` succeeds so the review layer can inspect draft provenance.
+- [x] Add automated tests for `create_journal_entry_draft` success, idempotency replay/conflict, and delegated tenant enforcement before exposing it live.

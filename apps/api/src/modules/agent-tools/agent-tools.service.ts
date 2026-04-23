@@ -4,6 +4,9 @@ import { validate, type ValidationError } from 'class-validator';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 import { HealthService } from '../health/health.service';
+import { AppError } from '../shared/app-error';
+import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
+import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { JournalValidationService } from '../journal-tools/journal-validation.service';
 import { ValidateJournalEntryInputDto } from '../journal-tools/dto/validate-journal-entry.dto';
 import {
@@ -37,8 +40,15 @@ interface AgentToolDefinition<TInput extends object = object, TResult = unknown>
   input_dto?: new () => TInput;
   input_schema: ToolSchemaDescription;
   output_schema: ToolSchemaDescription;
-  execute: (input: TInput, actor: AuthenticatedActor) => Promise<TResult>;
+  execute: (input: TInput, actor: AuthenticatedActor, context: ToolExecutionContext) => Promise<TResult>;
   summarize: (result: TResult) => string;
+}
+
+interface ToolExecutionContext {
+  requestId: string;
+  correlationId: string | null;
+  idempotencyKey: string | null;
+  toolName: string;
 }
 
 interface AgentToolError {
@@ -64,7 +74,8 @@ export class AgentToolsService {
   constructor(
     private readonly healthService: HealthService,
     private readonly reportsService: ReportsService,
-    private readonly journalValidationService: JournalValidationService
+    private readonly journalValidationService: JournalValidationService,
+    private readonly journalDraftService: JournalDraftService
   ) {}
 
   getSchema() {
@@ -155,7 +166,12 @@ export class AgentToolsService {
     }
 
     try {
-      const result = await tool.execute(validatedInput.value, actor);
+      const result = await tool.execute(validatedInput.value, actor, {
+        requestId,
+        correlationId: request.correlation_id ?? null,
+        idempotencyKey: request.idempotency_key ?? null,
+        toolName: tool.name
+      });
       return {
         ok: true,
         tool: tool.name,
@@ -183,6 +199,10 @@ export class AgentToolsService {
           'TENANT_ACCESS_DENIED',
           error.message
         );
+      }
+
+      if (error instanceof AppError) {
+        return this.buildErrorEnvelope(tool.name, requestId, request.correlation_id, error.code, error.message);
       }
 
       const message = error instanceof Error ? error.message : 'Tool execution failed.';
@@ -400,6 +420,89 @@ export class AgentToolsService {
           this.journalValidationService.validateJournalEntry(input as ValidateJournalEntryInputDto, actor),
         summarize: (result) =>
           `Journal entry validation ${(result as { valid: boolean }).valid ? 'passed' : 'failed'} for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'create_journal_entry_draft',
+        description: 'Creates a validated journal draft and linked agent proposal for later review.',
+        category: 'proposal',
+        mutability: 'proposal',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: CreateJournalEntryDraftInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'entry_date', 'source_type', 'lines'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            accounting_period_id: { type: 'string', format: 'uuid' },
+            entry_date: { type: 'string', format: 'date' },
+            source_type: { type: 'string' },
+            memo: { type: 'string' },
+            metadata: { type: 'object' },
+            lines: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['account_id', 'debit', 'credit'],
+                properties: {
+                  account_id: { type: 'string', format: 'uuid' },
+                  description: { type: 'string' },
+                  debit: { type: 'number' },
+                  credit: { type: 'number' }
+                }
+              }
+            }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'draft_id',
+            'draft_number',
+            'proposal_id',
+            'actor_context',
+            'status',
+            'requires_approval',
+            'entry_date',
+            'line_count',
+            'validation_result',
+            'impact_preview'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            draft_id: { type: 'string', format: 'uuid' },
+            draft_number: { type: 'string' },
+            proposal_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            status: { type: 'string' },
+            requires_approval: { type: 'boolean' },
+            entry_date: { type: 'string' },
+            line_count: { type: 'number' },
+            validation_result: { type: 'object' },
+            impact_preview: { type: 'object' }
+          }
+        },
+        execute: async (input, actor, context) => {
+          if (context.idempotencyKey === null) {
+            throw new AppError('IDEMPOTENCY_CONFLICT', 'Mutating tools require an idempotency_key.');
+          }
+
+          return this.journalDraftService.createJournalEntryDraft(
+            input as CreateJournalEntryDraftInputDto,
+            actor,
+            {
+              requestId: context.requestId,
+              correlationId: context.correlationId,
+              idempotencyKey: context.idempotencyKey,
+              toolName: context.toolName
+            }
+          );
+        },
+        summarize: (result) =>
+          `Created journal draft ${(result as { draft_number: string }).draft_number} for organization ${(result as { organization_id: string }).organization_id}.`
       },
       {
         name: 'get_general_ledger',

@@ -46,6 +46,7 @@ Already scaffolded in code:
 - `apps/api` NestJS runtime skeleton
 - Supabase-backed auth verification and tenant access checks
 - deterministic minimal tenant bootstrap seed rendering for first usable firm/org/user/account data
+- proposal-style journal draft creation with idempotency replay/conflict handling and linked `agent_proposals`
 - Postgres-backed reporting endpoints for:
   - `GET /api/v1/health`
   - `GET /api/v1/reports/trial-balance`
@@ -61,7 +62,7 @@ Still to implement:
 - broader backend runtime services
 - non-user client registry and stronger agent auth beyond the current bounded configured-client path
 - schedule runtime and reporting application services
-- idempotency and agent proposal runtime workflows
+- fuller idempotency and agent proposal runtime workflows beyond the first journal-draft path
 - full write-path orchestration on top of the existing DB constraints
 
 ## Architecture Summary
@@ -230,6 +231,16 @@ If you are here to implement the system, the next practical build order is:
 
 For tenant-scoped `agent-tools` report reads with agent credentials, also send:
 - `x-delegated-auth-user-id`
+
+The current `agent-tools` write-oriented surface now includes:
+- `validate_journal_entry`
+- `create_journal_entry_draft`
+
+`create_journal_entry_draft` currently:
+- validates the requested journal before persisting
+- writes `journal_entry_drafts` and `journal_entry_draft_lines`
+- writes a linked `agent_proposals` row
+- performs a first application-layer idempotency replay/conflict check against `idempotency_keys`
 
 ## Minimal Tenant Bootstrap
 
