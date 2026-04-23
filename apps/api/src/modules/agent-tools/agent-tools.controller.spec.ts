@@ -34,6 +34,9 @@ describe('AgentToolsController', () => {
 
   const journalDraftService = {
     createJournalEntryDraft: jest.fn(),
+    listJournalEntries: jest.fn(),
+    getJournalEntry: jest.fn(),
+    getJournalEntryReversalChain: jest.fn(),
     getJournalEntryDraft: jest.fn(),
     listAgentProposals: jest.fn(),
     getAgentProposal: jest.fn(),
@@ -136,6 +139,140 @@ describe('AgentToolsController', () => {
           '660e8400-e29b-41d4-a716-446655440000',
           '770e8400-e29b-41d4-a716-446655440000'
         ]
+      }
+    });
+
+    journalDraftService.listJournalEntries.mockResolvedValue({
+      organization_id: organizationId,
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      filters: {
+        status: 'reversed',
+        from_date: '2026-04-01',
+        to_date: '2026-04-30',
+        limit: 10
+      },
+      items: [
+        {
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+          entry_number: 'JE-000001',
+          entry_date: '2026-04-23',
+          memo: 'Utilities accrual',
+          source_type: 'manual_adjustment',
+          source_id: 'request-1',
+          status: 'reversed',
+          posted_at: '2026-04-23T12:00:00.000Z',
+          draft_id: '880e8400-e29b-41d4-a716-446655440000',
+          draft_number: 'JE-000001',
+          proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+          proposal_status: 'posted',
+          reversal_of_journal_entry_id: null,
+          reversal_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000',
+          line_count: 2
+        }
+      ]
+    });
+
+    journalDraftService.getJournalEntry.mockResolvedValue({
+      organization_id: organizationId,
+      journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+      entry_number: 'JE-000001',
+      entry_date: '2026-04-23',
+      memo: 'Utilities accrual',
+      source_type: 'manual_adjustment',
+      source_id: 'request-1',
+      status: 'reversed',
+      posted_at: '2026-04-23T12:00:00.000Z',
+      accounting_period_id: 'period-1',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      posted_by: {
+        actor_type: 'agent',
+        actor_id: 'test-agent-client',
+        user_id: 'app-user-1'
+      },
+      draft: {
+        draft_id: '880e8400-e29b-41d4-a716-446655440000',
+        draft_number: 'JE-000001',
+        status: 'posted'
+      },
+      proposal: {
+        proposal_id: '990e8400-e29b-41d4-a716-446655440000',
+        status: 'posted',
+        title: 'Journal draft: Utilities accrual',
+        posted_entity_type: 'journal_entry',
+        posted_entity_id: 'bb0e8400-e29b-41d4-a716-446655440000'
+      },
+      reversal_linkage: {
+        journal_entry_reversal_id: 'dd0e8400-e29b-41d4-a716-446655440000',
+        reversal_of_journal_entry_id: null,
+        reversed_by_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000',
+        reversal_date: '2026-04-24',
+        reversal_reason: 'Customer invoice voided'
+      },
+      metadata: {
+        source: 'test'
+      },
+      lines: [
+        {
+          id: 'line-1',
+          line_number: 1,
+          account_id: '660e8400-e29b-41d4-a716-446655440000',
+          account_code: '5000',
+          account_name: 'Operating Expense',
+          description: null,
+          debit: 100,
+          credit: 0,
+          dimensions: {},
+          metadata: {}
+        }
+      ]
+    });
+
+    journalDraftService.getJournalEntryReversalChain.mockResolvedValue({
+      organization_id: organizationId,
+      requested_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000',
+      actor_context: {
+        appUserId: 'app-user-1',
+        authUserId: delegatedAuthUserId,
+        organizationRole: 'accountant',
+        firmRole: null,
+        firmId: 'firm-1'
+      },
+      original_entry: {
+        journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+        entry_number: 'JE-000001',
+        entry_date: '2026-04-23',
+        memo: 'Utilities accrual',
+        source_type: 'manual_adjustment',
+        source_id: 'request-1',
+        status: 'reversed',
+        posted_at: '2026-04-23T12:00:00.000Z'
+      },
+      reversal: {
+        journal_entry_reversal_id: 'dd0e8400-e29b-41d4-a716-446655440000',
+        reversal_date: '2026-04-24',
+        reason: 'Customer invoice voided',
+        journal_entry: {
+          journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000',
+          entry_number: 'JE-000002',
+          entry_date: '2026-04-24',
+          memo: 'Reversal of JE-000001: Customer invoice voided',
+          source_type: 'journal_entry_reversal',
+          source_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+          status: 'posted',
+          posted_at: '2026-04-24T09:00:00.000Z'
+        }
       }
     });
 
@@ -531,8 +668,11 @@ describe('AgentToolsController', () => {
         expect.objectContaining({ name: 'get_trial_balance' }),
         expect.objectContaining({ name: 'get_agent_proposal' }),
         expect.objectContaining({ name: 'get_approval_request' }),
+        expect.objectContaining({ name: 'get_journal_entry' }),
+        expect.objectContaining({ name: 'get_journal_entry_reversal_chain' }),
         expect.objectContaining({ name: 'list_agent_proposals' }),
         expect.objectContaining({ name: 'list_approval_requests' }),
+        expect.objectContaining({ name: 'list_journal_entries' }),
         expect.objectContaining({ name: 'post_approved_journal_entry' }),
         expect.objectContaining({ name: 'reverse_posted_journal_entry' }),
         expect.objectContaining({ name: 'resolve_approval_request' }),
@@ -718,6 +858,92 @@ describe('AgentToolsController', () => {
         draft_number: 'JE-000001',
         proposal: expect.objectContaining({
           proposal_id: '990e8400-e29b-41d4-a716-446655440000'
+        })
+      })
+    );
+  });
+
+  it('lists posted journal entries for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'list_journal_entries',
+        input: {
+          organization_id: organizationId,
+          status: 'reversed',
+          from_date: '2026-04-01',
+          to_date: '2026-04-30',
+          limit: 10
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.listJournalEntries).toHaveBeenCalled();
+    expect(response.body.result.items).toEqual([
+      expect.objectContaining({
+        journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
+        reversal_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000'
+      })
+    ]);
+  });
+
+  it('returns one posted journal entry for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_journal_entry',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getJournalEntry).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        entry_number: 'JE-000001',
+        reversal_linkage: expect.objectContaining({
+          reversed_by_journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000'
+        })
+      })
+    );
+  });
+
+  it('returns journal entry reversal chains for delegated agent callers', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_journal_entry_reversal_chain',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'cc0e8400-e29b-41d4-a716-446655440000'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(true);
+    expect(journalDraftService.getJournalEntryReversalChain).toHaveBeenCalled();
+    expect(response.body.result).toEqual(
+      expect.objectContaining({
+        original_entry: expect.objectContaining({
+          entry_number: 'JE-000001'
+        }),
+        reversal: expect.objectContaining({
+          journal_entry: expect.objectContaining({
+            entry_number: 'JE-000002'
+          })
         })
       })
     );
@@ -1042,6 +1268,33 @@ describe('AgentToolsController', () => {
           journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000',
           reversal_date: '2026-04-24',
           reason: 'Customer invoice voided'
+        }
+      })
+      .expect(201);
+
+    expect(response.body.ok).toBe(false);
+    expect(response.body.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'TENANT_ACCESS_DENIED' })
+      ])
+    );
+  });
+
+  it('returns tenant access denied when delegated posted-entry reads fail membership checks', async () => {
+    journalDraftService.getJournalEntry.mockRejectedValueOnce(
+      new ForbiddenException('Actor is not allowed to access the requested organization.')
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/agent-tools/execute')
+      .set('x-agent-client-id', 'test-agent-client')
+      .set('x-agent-client-secret', 'test-secret')
+      .set('x-delegated-auth-user-id', delegatedAuthUserId)
+      .send({
+        tool: 'get_journal_entry',
+        input: {
+          organization_id: organizationId,
+          journal_entry_id: 'bb0e8400-e29b-41d4-a716-446655440000'
         }
       })
       .expect(201);

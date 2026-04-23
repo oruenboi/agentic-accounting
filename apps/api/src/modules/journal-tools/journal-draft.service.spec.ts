@@ -382,6 +382,261 @@ describe('JournalDraftService', () => {
     );
   });
 
+  it('lists posted journal entries for an organization', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          journal_entry_id: 'entry-1',
+          entry_number: 'JE-000001',
+          entry_date: '2026-04-23',
+          memo: 'Utilities accrual',
+          source_type: 'manual_adjustment',
+          source_id: 'request-1',
+          status: 'reversed',
+          posted_at: '2026-04-23T12:00:00.000Z',
+          draft_id: 'draft-1',
+          draft_number: 'JE-000001',
+          proposal_id: 'proposal-1',
+          proposal_status: 'posted',
+          reversal_of_journal_entry_id: null,
+          reversal_journal_entry_id: 'entry-2',
+          line_count: '2'
+        }
+      ]
+    });
+
+    const result = await service.listJournalEntries(
+      {
+        organization_id: input.organization_id,
+        status: 'reversed',
+        from_date: '2026-04-01',
+        to_date: '2026-04-30',
+        limit: 10
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        organization_id: input.organization_id,
+        filters: {
+          status: 'reversed',
+          from_date: '2026-04-01',
+          to_date: '2026-04-30',
+          limit: 10
+        }
+      })
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        journal_entry_id: 'entry-1',
+        entry_number: 'JE-000001',
+        status: 'reversed',
+        reversal_journal_entry_id: 'entry-2',
+        line_count: 2
+      })
+    ]);
+  });
+
+  it('returns a posted journal entry with lines and reversal linkage', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-1',
+            entry_number: 'JE-000001',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            status: 'reversed',
+            posted_at: '2026-04-23T12:00:00.000Z',
+            accounting_period_id: input.accounting_period_id,
+            posted_by_actor_type: 'agent',
+            posted_by_actor_id: 'test-agent-client',
+            posted_by_user_id: actorContext.appUserId,
+            metadata: { source: 'test' },
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            draft_status: 'posted',
+            proposal_id: 'proposal-1',
+            proposal_status: 'posted',
+            proposal_title: 'Journal draft: Utilities accrual',
+            posted_entity_type: 'journal_entry',
+            posted_entity_id: 'entry-1',
+            reversal_of_journal_entry_id: null,
+            journal_entry_reversal_id: 'reversal-1',
+            reversed_by_journal_entry_id: 'entry-2',
+            reversal_date: '2026-04-24',
+            reversal_reason: 'Customer invoice voided'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'line-1',
+            line_number: 1,
+            account_id: input.lines[0].account_id,
+            account_code: '5000',
+            account_name: 'Operating Expense',
+            description: null,
+            debit: '100.00',
+            credit: '0.00',
+            dimensions: {},
+            metadata: {}
+          },
+          {
+            id: 'line-2',
+            line_number: 2,
+            account_id: input.lines[1].account_id,
+            account_code: '2000',
+            account_name: 'Accounts Payable',
+            description: null,
+            debit: '0.00',
+            credit: '100.00',
+            dimensions: {},
+            metadata: {}
+          }
+        ]
+      });
+
+    const result = await service.getJournalEntry(
+      {
+        organization_id: input.organization_id,
+        journal_entry_id: 'entry-1'
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        journal_entry_id: 'entry-1',
+        entry_number: 'JE-000001',
+        status: 'reversed',
+        proposal: expect.objectContaining({
+          proposal_id: 'proposal-1'
+        }),
+        reversal_linkage: expect.objectContaining({
+          journal_entry_reversal_id: 'reversal-1',
+          reversed_by_journal_entry_id: 'entry-2'
+        })
+      })
+    );
+    expect(result.lines).toHaveLength(2);
+  });
+
+  it('returns journal entry reversal lineage for posted entries', async () => {
+    tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-2',
+            entry_number: 'JE-000002',
+            entry_date: '2026-04-24',
+            memo: 'Reversal of JE-000001: Customer invoice voided',
+            source_type: 'journal_entry_reversal',
+            source_id: 'entry-1',
+            status: 'posted',
+            accounting_period_id: input.accounting_period_id,
+            reversal_of_journal_entry_id: 'entry-1',
+            reversal_record_id: null,
+            reversal_journal_entry_id: null
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            journal_entry_id: 'entry-1',
+            entry_number: 'JE-000001',
+            entry_date: '2026-04-23',
+            memo: 'Utilities accrual',
+            source_type: 'manual_adjustment',
+            source_id: 'request-1',
+            status: 'reversed',
+            posted_at: '2026-04-23T12:00:00.000Z',
+            accounting_period_id: input.accounting_period_id,
+            posted_by_actor_type: 'agent',
+            posted_by_actor_id: 'test-agent-client',
+            posted_by_user_id: actorContext.appUserId,
+            metadata: { source: 'test' },
+            draft_id: 'draft-1',
+            draft_number: 'JE-000001',
+            draft_status: 'posted',
+            proposal_id: 'proposal-1',
+            proposal_status: 'posted',
+            proposal_title: 'Journal draft: Utilities accrual',
+            posted_entity_type: 'journal_entry',
+            posted_entity_id: 'entry-1',
+            reversal_of_journal_entry_id: null,
+            journal_entry_reversal_id: 'reversal-1',
+            reversed_by_journal_entry_id: 'entry-2',
+            reversal_date: '2026-04-24',
+            reversal_reason: 'Customer invoice voided'
+          },
+          {
+            journal_entry_id: 'entry-2',
+            entry_number: 'JE-000002',
+            entry_date: '2026-04-24',
+            memo: 'Reversal of JE-000001: Customer invoice voided',
+            source_type: 'journal_entry_reversal',
+            source_id: 'entry-1',
+            status: 'posted',
+            posted_at: '2026-04-24T09:00:00.000Z',
+            accounting_period_id: input.accounting_period_id,
+            posted_by_actor_type: 'agent',
+            posted_by_actor_id: 'test-agent-client',
+            posted_by_user_id: actorContext.appUserId,
+            metadata: {},
+            draft_id: null,
+            draft_number: null,
+            draft_status: null,
+            proposal_id: null,
+            proposal_status: null,
+            proposal_title: null,
+            posted_entity_type: null,
+            posted_entity_id: null,
+            reversal_of_journal_entry_id: 'entry-1',
+            journal_entry_reversal_id: 'reversal-1',
+            reversed_by_journal_entry_id: null,
+            reversal_date: '2026-04-24',
+            reversal_reason: 'Customer invoice voided'
+          }
+        ]
+      });
+
+    const result = await service.getJournalEntryReversalChain(
+      {
+        organization_id: input.organization_id,
+        journal_entry_id: 'entry-2'
+      },
+      actor
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        requested_journal_entry_id: 'entry-2',
+        original_entry: expect.objectContaining({
+          journal_entry_id: 'entry-1',
+          entry_number: 'JE-000001',
+          status: 'reversed'
+        }),
+        reversal: expect.objectContaining({
+          journal_entry_reversal_id: 'reversal-1',
+          reason: 'Customer invoice voided',
+          journal_entry: expect.objectContaining({
+            journal_entry_id: 'entry-2',
+            entry_number: 'JE-000002'
+          })
+        })
+      })
+    );
+  });
+
   it('submits a validated draft for approval and updates the linked proposal state', async () => {
     tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
 

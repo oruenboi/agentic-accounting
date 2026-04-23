@@ -7,9 +7,12 @@ import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from './dto/create-journal-entry-draft.dto';
 import { GetApprovalRequestInputDto } from './dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from './dto/get-agent-proposal.dto';
+import { GetJournalEntryInputDto } from './dto/get-journal-entry.dto';
+import { GetJournalEntryReversalChainInputDto } from './dto/get-journal-entry-reversal-chain.dto';
 import { GetJournalEntryDraftInputDto } from './dto/get-journal-entry-draft.dto';
 import { ListApprovalRequestsInputDto } from './dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from './dto/list-agent-proposals.dto';
+import { ListJournalEntriesInputDto } from './dto/list-journal-entries.dto';
 import { PostApprovedJournalEntryInputDto } from './dto/post-approved-journal-entry.dto';
 import { ReversePostedJournalEntryInputDto } from './dto/reverse-posted-journal-entry.dto';
 import { ResolveApprovalRequestInputDto } from './dto/resolve-approval-request.dto';
@@ -210,11 +213,60 @@ interface JournalEntryLineDetailRow {
   id: string;
   line_number: number;
   account_id: string;
+  account_code?: string;
+  account_name?: string;
   description: string | null;
   debit: string;
   credit: string;
   dimensions: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
+}
+
+interface JournalEntryListRow {
+  journal_entry_id: string;
+  entry_number: string;
+  entry_date: string;
+  memo: string | null;
+  source_type: string;
+  source_id: string | null;
+  status: string;
+  posted_at: string;
+  draft_id: string | null;
+  draft_number: string | null;
+  proposal_id: string | null;
+  proposal_status: string | null;
+  reversal_of_journal_entry_id: string | null;
+  reversal_journal_entry_id: string | null;
+  line_count: string | number;
+}
+
+interface JournalEntryDetailRow {
+  journal_entry_id: string;
+  entry_number: string;
+  entry_date: string;
+  memo: string | null;
+  source_type: string;
+  source_id: string | null;
+  status: string;
+  posted_at: string;
+  accounting_period_id: string | null;
+  posted_by_actor_type: string;
+  posted_by_actor_id: string;
+  posted_by_user_id: string | null;
+  metadata: Record<string, unknown> | null;
+  draft_id: string | null;
+  draft_number: string | null;
+  draft_status: string | null;
+  proposal_id: string | null;
+  proposal_status: string | null;
+  proposal_title: string | null;
+  posted_entity_type: string | null;
+  posted_entity_id: string | null;
+  reversal_of_journal_entry_id: string | null;
+  journal_entry_reversal_id: string | null;
+  reversed_by_journal_entry_id: string | null;
+  reversal_date: string | null;
+  reversal_reason: string | null;
 }
 
 interface AccountingPeriodRow {
@@ -2240,6 +2292,367 @@ export class JournalDraftService {
 
       return response;
     });
+  }
+
+  async listJournalEntries(input: ListJournalEntriesInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const limit = input.limit ?? 20;
+
+    const result = await this.databaseService.query<JournalEntryListRow>(
+      `
+        select
+          je.id::text as journal_entry_id,
+          je.entry_number,
+          je.entry_date::text,
+          je.memo,
+          je.source_type,
+          je.source_id,
+          case
+            when jer_original.id is not null then 'reversed'
+            else je.status
+          end as status,
+          je.posted_at::text,
+          je.draft_id::text as draft_id,
+          d.draft_number,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status,
+          je.reversal_of_journal_entry_id::text,
+          jer_original.reversal_journal_entry_id::text,
+          count(jel.id)::text as line_count
+        from public.journal_entries je
+        left join public.journal_entry_lines jel
+          on jel.journal_entry_id = je.id
+        left join public.journal_entry_reversals jer_original
+          on jer_original.original_journal_entry_id = je.id
+        left join public.journal_entry_drafts d
+          on d.id = je.draft_id
+        left join public.agent_proposals ap
+          on ap.posted_entity_type = 'journal_entry'
+         and ap.posted_entity_id = je.id
+        where je.organization_id = $1::uuid
+          and ($2::text is null or (case when jer_original.id is not null then 'reversed' else je.status end) = $2::text)
+          and ($3::date is null or je.entry_date >= $3::date)
+          and ($4::date is null or je.entry_date <= $4::date)
+        group by
+          je.id,
+          d.draft_number,
+          ap.id,
+          ap.status,
+          jer_original.id,
+          jer_original.reversal_journal_entry_id
+        order by je.entry_date desc, je.posted_at desc
+        limit $5
+      `,
+      [input.organization_id, input.status ?? null, input.from_date ?? null, input.to_date ?? null, limit]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      actor_context: actorContext,
+      filters: {
+        status: input.status ?? null,
+        from_date: input.from_date ?? null,
+        to_date: input.to_date ?? null,
+        limit
+      },
+      items: result.rows.map((row) => ({
+        journal_entry_id: row.journal_entry_id,
+        entry_number: row.entry_number,
+        entry_date: row.entry_date,
+        memo: row.memo,
+        source_type: row.source_type,
+        source_id: row.source_id,
+        status: row.status,
+        posted_at: row.posted_at,
+        draft_id: row.draft_id,
+        draft_number: row.draft_number,
+        proposal_id: row.proposal_id,
+        proposal_status: row.proposal_status,
+        reversal_of_journal_entry_id: row.reversal_of_journal_entry_id,
+        reversal_journal_entry_id: row.reversal_journal_entry_id,
+        line_count: Number(row.line_count)
+      }))
+    };
+  }
+
+  async getJournalEntry(input: GetJournalEntryInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const result = await this.databaseService.query<JournalEntryDetailRow>(
+      `
+        select
+          je.id::text as journal_entry_id,
+          je.entry_number,
+          je.entry_date::text,
+          je.memo,
+          je.source_type,
+          je.source_id,
+          case
+            when jer_original.id is not null then 'reversed'
+            else je.status
+          end as status,
+          je.posted_at::text,
+          je.accounting_period_id::text,
+          je.posted_by_actor_type,
+          je.posted_by_actor_id,
+          je.posted_by_user_id::text,
+          je.metadata,
+          je.draft_id::text as draft_id,
+          d.draft_number,
+          d.status as draft_status,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status,
+          ap.title as proposal_title,
+          ap.posted_entity_type,
+          ap.posted_entity_id::text,
+          je.reversal_of_journal_entry_id::text,
+          coalesce(jer_original.id::text, jer_reversal.id::text) as journal_entry_reversal_id,
+          jer_original.reversal_journal_entry_id::text as reversed_by_journal_entry_id,
+          coalesce(jer_original.reversal_date::text, jer_reversal.reversal_date::text) as reversal_date,
+          coalesce(jer_original.reason, jer_reversal.reason) as reversal_reason
+        from public.journal_entries je
+        left join public.journal_entry_drafts d
+          on d.id = je.draft_id
+        left join public.agent_proposals ap
+          on ap.posted_entity_type = 'journal_entry'
+         and ap.posted_entity_id = je.id
+        left join public.journal_entry_reversals jer_original
+          on jer_original.original_journal_entry_id = je.id
+        left join public.journal_entry_reversals jer_reversal
+          on jer_reversal.reversal_journal_entry_id = je.id
+        where je.id = $1::uuid
+          and je.organization_id = $2::uuid
+        order by ap.created_at desc nulls last
+        limit 1
+      `,
+      [input.journal_entry_id, input.organization_id]
+    );
+
+    const entry = result.rows[0];
+
+    if (entry === undefined) {
+      throw new AppError(
+        'JOURNAL_ENTRY_NOT_FOUND',
+        `Journal entry ${input.journal_entry_id} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    const linesResult = await this.databaseService.query<JournalEntryLineDetailRow>(
+      `
+        select
+          jel.id::text,
+          jel.line_number,
+          jel.account_id::text,
+          a.code as account_code,
+          a.name as account_name,
+          jel.description,
+          jel.debit::text,
+          jel.credit::text,
+          jel.dimensions,
+          jel.metadata
+        from public.journal_entry_lines jel
+        join public.accounts a
+          on a.id = jel.account_id
+        where jel.journal_entry_id = $1::uuid
+        order by jel.line_number asc
+      `,
+      [input.journal_entry_id]
+    );
+
+    return {
+      organization_id: input.organization_id,
+      journal_entry_id: entry.journal_entry_id,
+      entry_number: entry.entry_number,
+      entry_date: entry.entry_date,
+      memo: entry.memo,
+      source_type: entry.source_type,
+      source_id: entry.source_id,
+      status: entry.status,
+      posted_at: entry.posted_at,
+      accounting_period_id: entry.accounting_period_id,
+      actor_context: actorContext,
+      posted_by: {
+        actor_type: entry.posted_by_actor_type,
+        actor_id: entry.posted_by_actor_id,
+        user_id: entry.posted_by_user_id
+      },
+      draft:
+        entry.draft_id === null
+          ? null
+          : {
+              draft_id: entry.draft_id,
+              draft_number: entry.draft_number,
+              status: entry.draft_status
+            },
+      proposal:
+        entry.proposal_id === null
+          ? null
+          : {
+              proposal_id: entry.proposal_id,
+              status: entry.proposal_status,
+              title: entry.proposal_title,
+              posted_entity_type: entry.posted_entity_type,
+              posted_entity_id: entry.posted_entity_id
+            },
+      reversal_linkage: {
+        journal_entry_reversal_id: entry.journal_entry_reversal_id,
+        reversal_of_journal_entry_id: entry.reversal_of_journal_entry_id,
+        reversed_by_journal_entry_id: entry.reversed_by_journal_entry_id,
+        reversal_date: entry.reversal_date,
+        reversal_reason: entry.reversal_reason
+      },
+      metadata: entry.metadata ?? {},
+      lines: linesResult.rows.map((line) => ({
+        id: line.id,
+        line_number: line.line_number,
+        account_id: line.account_id,
+        account_code: line.account_code ?? null,
+        account_name: line.account_name ?? null,
+        description: line.description,
+        debit: Number(line.debit),
+        credit: Number(line.credit),
+        dimensions: line.dimensions ?? {},
+        metadata: line.metadata ?? {}
+      }))
+    };
+  }
+
+  async getJournalEntryReversalChain(input: GetJournalEntryReversalChainInputDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+
+    const requestedEntryResult = await this.databaseService.query<OriginalJournalEntryRow>(
+      `
+        select
+          je.id::text as journal_entry_id,
+          je.entry_number,
+          je.entry_date::text,
+          je.memo,
+          je.source_type,
+          je.source_id,
+          je.status,
+          je.accounting_period_id::text,
+          je.reversal_of_journal_entry_id::text,
+          jer.id::text as reversal_record_id,
+          jer.reversal_journal_entry_id::text
+        from public.journal_entries je
+        left join public.journal_entry_reversals jer
+          on jer.original_journal_entry_id = je.id
+        where je.id = $1::uuid
+          and je.organization_id = $2::uuid
+        limit 1
+      `,
+      [input.journal_entry_id, input.organization_id]
+    );
+
+    const requestedEntry = requestedEntryResult.rows[0];
+
+    if (requestedEntry === undefined) {
+      throw new AppError(
+        'JOURNAL_ENTRY_NOT_FOUND',
+        `Journal entry ${input.journal_entry_id} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    const originalJournalEntryId =
+      requestedEntry.reversal_of_journal_entry_id ?? requestedEntry.journal_entry_id;
+
+    const chainResult = await this.databaseService.query<JournalEntryDetailRow>(
+      `
+        select
+          je.id::text as journal_entry_id,
+          je.entry_number,
+          je.entry_date::text,
+          je.memo,
+          je.source_type,
+          je.source_id,
+          case
+            when jer_original.id is not null then 'reversed'
+            else je.status
+          end as status,
+          je.posted_at::text,
+          je.accounting_period_id::text,
+          je.posted_by_actor_type,
+          je.posted_by_actor_id,
+          je.posted_by_user_id::text,
+          je.metadata,
+          je.draft_id::text as draft_id,
+          d.draft_number,
+          d.status as draft_status,
+          ap.id::text as proposal_id,
+          ap.status as proposal_status,
+          ap.title as proposal_title,
+          ap.posted_entity_type,
+          ap.posted_entity_id::text,
+          je.reversal_of_journal_entry_id::text,
+          coalesce(jer_original.id::text, jer_reversal.id::text) as journal_entry_reversal_id,
+          jer_original.reversal_journal_entry_id::text as reversed_by_journal_entry_id,
+          coalesce(jer_original.reversal_date::text, jer_reversal.reversal_date::text) as reversal_date,
+          coalesce(jer_original.reason, jer_reversal.reason) as reversal_reason
+        from public.journal_entries je
+        left join public.journal_entry_drafts d
+          on d.id = je.draft_id
+        left join public.agent_proposals ap
+          on ap.posted_entity_type = 'journal_entry'
+         and ap.posted_entity_id = je.id
+        left join public.journal_entry_reversals jer_original
+          on jer_original.original_journal_entry_id = je.id
+        left join public.journal_entry_reversals jer_reversal
+          on jer_reversal.reversal_journal_entry_id = je.id
+        where je.organization_id = $1::uuid
+          and (je.id = $2::uuid or je.id = $3::uuid)
+        order by je.posted_at asc
+      `,
+      [
+        input.organization_id,
+        originalJournalEntryId,
+        requestedEntry.reversal_journal_entry_id ?? requestedEntry.journal_entry_id
+      ]
+    );
+
+    const originalEntry = chainResult.rows.find((row) => row.journal_entry_id === originalJournalEntryId);
+
+    if (originalEntry === undefined) {
+      throw new AppError(
+        'JOURNAL_ENTRY_NOT_FOUND',
+        `Original journal entry ${originalJournalEntryId} was not found for organization ${input.organization_id}.`
+      );
+    }
+
+    const reversalEntry = chainResult.rows.find((row) => row.reversal_of_journal_entry_id === originalJournalEntryId);
+
+    return {
+      organization_id: input.organization_id,
+      requested_journal_entry_id: input.journal_entry_id,
+      actor_context: actorContext,
+      original_entry: {
+        journal_entry_id: originalEntry.journal_entry_id,
+        entry_number: originalEntry.entry_number,
+        entry_date: originalEntry.entry_date,
+        memo: originalEntry.memo,
+        source_type: originalEntry.source_type,
+        source_id: originalEntry.source_id,
+        status: originalEntry.status,
+        posted_at: originalEntry.posted_at
+      },
+      reversal:
+        reversalEntry === undefined
+          ? null
+          : {
+              journal_entry_reversal_id: reversalEntry.journal_entry_reversal_id,
+              reversal_date: reversalEntry.reversal_date,
+              reason: reversalEntry.reversal_reason,
+              journal_entry: {
+                journal_entry_id: reversalEntry.journal_entry_id,
+                entry_number: reversalEntry.entry_number,
+                entry_date: reversalEntry.entry_date,
+                memo: reversalEntry.memo,
+                source_type: reversalEntry.source_type,
+                source_id: reversalEntry.source_id,
+                status: reversalEntry.status,
+                posted_at: reversalEntry.posted_at
+              }
+            }
+    };
   }
 
   private async loadIdempotencyRecord(

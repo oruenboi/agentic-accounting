@@ -8,10 +8,13 @@ import { AppError } from '../shared/app-error';
 import { CreateJournalEntryDraftInputDto } from '../journal-tools/dto/create-journal-entry-draft.dto';
 import { GetApprovalRequestInputDto } from '../journal-tools/dto/get-approval-request.dto';
 import { GetAgentProposalInputDto } from '../journal-tools/dto/get-agent-proposal.dto';
+import { GetJournalEntryInputDto } from '../journal-tools/dto/get-journal-entry.dto';
+import { GetJournalEntryReversalChainInputDto } from '../journal-tools/dto/get-journal-entry-reversal-chain.dto';
 import { GetJournalEntryDraftInputDto } from '../journal-tools/dto/get-journal-entry-draft.dto';
 import { JournalDraftService } from '../journal-tools/journal-draft.service';
 import { ListApprovalRequestsInputDto } from '../journal-tools/dto/list-approval-requests.dto';
 import { ListAgentProposalsInputDto } from '../journal-tools/dto/list-agent-proposals.dto';
+import { ListJournalEntriesInputDto } from '../journal-tools/dto/list-journal-entries.dto';
 import { PostApprovedJournalEntryInputDto } from '../journal-tools/dto/post-approved-journal-entry.dto';
 import { ReversePostedJournalEntryInputDto } from '../journal-tools/dto/reverse-posted-journal-entry.dto';
 import { ResolveApprovalRequestInputDto } from '../journal-tools/dto/resolve-approval-request.dto';
@@ -570,6 +573,129 @@ export class AgentToolsService {
           this.journalDraftService.getAgentProposal(input as GetAgentProposalInputDto, actor),
         summarize: (result) =>
           `Agent proposal ${(result as { proposal_id: string }).proposal_id} loaded successfully.`
+      },
+      {
+        name: 'list_journal_entries',
+        description: 'Returns posted journal entries for an organization with optional status and date filters.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: ListJournalEntriesInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            status: { type: 'string', enum: ['posted', 'reversed'] },
+            from_date: { type: 'string', format: 'date' },
+            to_date: { type: 'string', format: 'date' },
+            limit: { type: 'number' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'actor_context', 'filters', 'items'],
+          properties: {
+            organization_id: { type: 'string' },
+            actor_context: { type: 'object' },
+            filters: { type: 'object' },
+            items: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.listJournalEntries(input as ListJournalEntriesInputDto, actor),
+        summarize: (result) =>
+          `Journal entry listing returned ${this.countItems(result)} item(s) for organization ${(result as { organization_id: string }).organization_id}.`
+      },
+      {
+        name: 'get_journal_entry',
+        description: 'Returns one posted journal entry with lines, source context, and reversal linkage.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: GetJournalEntryInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'journal_entry_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            journal_entry_id: { type: 'string', format: 'uuid' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: [
+            'organization_id',
+            'journal_entry_id',
+            'entry_number',
+            'entry_date',
+            'status',
+            'posted_at',
+            'actor_context',
+            'posted_by',
+            'metadata',
+            'lines'
+          ],
+          properties: {
+            organization_id: { type: 'string' },
+            journal_entry_id: { type: 'string', format: 'uuid' },
+            entry_number: { type: 'string' },
+            entry_date: { type: 'string' },
+            status: { type: 'string' },
+            posted_at: { type: 'string' },
+            actor_context: { type: 'object' },
+            posted_by: { type: 'object' },
+            draft: { type: 'object' },
+            proposal: { type: 'object' },
+            reversal_linkage: { type: 'object' },
+            metadata: { type: 'object' },
+            lines: { type: 'array' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.getJournalEntry(input as GetJournalEntryInputDto, actor),
+        summarize: (result) =>
+          `Journal entry ${(result as { entry_number: string }).entry_number} loaded successfully.`
+      },
+      {
+        name: 'get_journal_entry_reversal_chain',
+        description: 'Returns the original and reversal journal entry lineage for one posted entry.',
+        category: 'read',
+        mutability: 'read',
+        requires_approval: false,
+        requires_tenant: true,
+        delegated_user_required: true,
+        idempotent: true,
+        input_dto: GetJournalEntryReversalChainInputDto,
+        input_schema: {
+          type: 'object',
+          required: ['organization_id', 'journal_entry_id'],
+          properties: {
+            organization_id: { type: 'string', format: 'uuid' },
+            journal_entry_id: { type: 'string', format: 'uuid' }
+          }
+        },
+        output_schema: {
+          type: 'object',
+          required: ['organization_id', 'requested_journal_entry_id', 'actor_context', 'original_entry'],
+          properties: {
+            organization_id: { type: 'string' },
+            requested_journal_entry_id: { type: 'string', format: 'uuid' },
+            actor_context: { type: 'object' },
+            original_entry: { type: 'object' },
+            reversal: { type: 'object' }
+          }
+        },
+        execute: async (input, actor) =>
+          this.journalDraftService.getJournalEntryReversalChain(input as GetJournalEntryReversalChainInputDto, actor),
+        summarize: (result) =>
+          `Journal entry reversal chain loaded for ${(result as { requested_journal_entry_id: string }).requested_journal_entry_id}.`
       },
       {
         name: 'list_agent_proposals',

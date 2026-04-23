@@ -108,3 +108,6 @@ last_reviewed: 2026-04-23
 - [x] Add a tenant-scoped `reverse_posted_journal_entry` agent tool that creates a reversal journal entry and immutable reversal linkage without mutating posted lines.
 - [x] Keep reversal idempotent and update original/reversal entry state consistently while blocking duplicate reversals of the same original entry.
 - [x] Add automated tests for reversal success, replay, duplicate-reversal protection, invalid original-entry state, and delegated tenant enforcement before exposing it live.
+- [x] Add tenant-scoped `list_journal_entries` and `get_journal_entry` agent tools so posted accounting truth can be discovered and inspected without direct SQL access.
+- [x] Add a tenant-scoped `get_journal_entry_reversal_chain` agent tool so original and reversal lineage can be audited end to end.
+- [x] Add automated tests for posted-entry list/detail/reversal-chain success and delegated tenant enforcement before exposing the tools live.
