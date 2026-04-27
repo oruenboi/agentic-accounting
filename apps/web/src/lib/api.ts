@@ -1,4 +1,5 @@
 import type {
+  AccountSummary,
   ApprovalRequestDetail,
   ApprovalRequestSummary,
   AuditEvent,
@@ -526,6 +527,37 @@ function reportEnvelope<TItem>(result: Record<string, unknown>, items: TItem[]):
     actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
     items
   };
+}
+
+function accountSummary(item: Record<string, unknown>): AccountSummary {
+  return {
+    accountId: String(item.account_id),
+    firmId: item.firm_id ? String(item.firm_id) : null,
+    organizationId: String(item.organization_id),
+    code: String(item.code ?? ''),
+    name: String(item.name ?? ''),
+    type: String(item.type ?? 'unknown'),
+    subtype: item.subtype ? String(item.subtype) : null,
+    parentAccountId: item.parent_account_id ? String(item.parent_account_id) : null,
+    status: String(item.status ?? 'unknown'),
+    isPostable: Boolean(item.is_postable),
+    createdAt: item.created_at ? String(item.created_at) : null,
+    updatedAt: item.updated_at ? String(item.updated_at) : null
+  };
+}
+
+export async function listAccounts(
+  session: Session,
+  filters: { type?: string; status?: string; postableOnly?: boolean; limit?: number }
+): Promise<AccountSummary[]> {
+  const result = await fetchApi<{ items?: Array<Record<string, unknown>> }>(session, '/api/v1/accounts', {
+    type: filters.type,
+    status: filters.status,
+    postable_only: filters.postableOnly === undefined ? undefined : String(filters.postableOnly),
+    limit: filters.limit ?? 100
+  });
+
+  return (result.items ?? []).map(accountSummary);
 }
 
 export async function getTrialBalanceReport(

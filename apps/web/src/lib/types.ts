@@ -203,6 +203,21 @@ export interface GeneralLedgerRow {
   runningBalance: string | number;
 }
 
+export interface AccountSummary {
+  accountId: string;
+  firmId: string | null;
+  organizationId: string;
+  code: string;
+  name: string;
+  type: string;
+  subtype: string | null;
+  parentAccountId: string | null;
+  status: string;
+  isPostable: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface ScheduleRunSummary {
   scheduleRunId: string;
   organizationId: string;

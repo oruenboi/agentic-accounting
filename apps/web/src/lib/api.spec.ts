@@ -5,6 +5,7 @@ import {
   generateScheduleRun,
   getScheduleRun,
   getTrialBalanceReport,
+  listAccounts,
   listScheduleDefinitions,
   listScheduleRuns,
   OperatorApiError
@@ -114,6 +115,56 @@ describe('getTrialBalanceReport', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.example.com/api/v1/reports/trial-balance?organization_id=org-1&as_of_date=2026-04-27&include_zero_balances=true',
+      {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      }
+    );
+  });
+});
+
+describe('listAccounts', () => {
+  it('lists chart accounts from the accounts API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-9',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          items: [
+            {
+              account_id: 'account-1',
+              firm_id: 'firm-1',
+              organization_id: 'org-1',
+              code: '2000',
+              name: 'Accounts Payable',
+              type: 'liability',
+              subtype: 'trade_payables',
+              status: 'active',
+              is_postable: true
+            }
+          ]
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listAccounts(session, { status: 'active', postableOnly: true, limit: 25 })).resolves.toEqual([
+      expect.objectContaining({
+        accountId: 'account-1',
+        code: '2000',
+        name: 'Accounts Payable',
+        type: 'liability',
+        isPostable: true
+      })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.com/api/v1/accounts?organization_id=org-1&status=active&postable_only=true&limit=25',
       {
         headers: {
           Authorization: 'Bearer token'

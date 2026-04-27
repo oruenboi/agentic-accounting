@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { validateEnvironment } from './config/env.validation';
+import { AccountsModule } from './modules/accounts/accounts.module';
 import { AgentToolsModule } from './modules/agent-tools/agent-tools.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DatabaseModule } from './modules/database/database.module';
@@ -20,6 +21,7 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
     DatabaseModule,
     AuthModule,
     HealthModule,
+    AccountsModule,
     ReportsModule,
     SchedulesModule,
     AgentToolsModule

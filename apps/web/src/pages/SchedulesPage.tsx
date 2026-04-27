@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { createScheduleDefinition, generateScheduleRun, listScheduleDefinitions, listScheduleRuns } from '../lib/api';
+import { createScheduleDefinition, generateScheduleRun, listAccounts, listScheduleDefinitions, listScheduleRuns } from '../lib/api';
 import { formatCurrency, formatDateTime } from '../lib/format';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Field, Select, TextArea, TextInput } from '../components/ui/Field';
+import { Field, Select, TextInput } from '../components/ui/Field';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
 import { Table, TableCell, TableRow } from '../components/ui/Table';
 import { useAsyncData } from './useAsyncData';
@@ -52,7 +52,7 @@ export function SchedulesPage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [definitionName, setDefinitionName] = useState('');
   const [definitionDescription, setDefinitionDescription] = useState('');
-  const [definitionAccountIds, setDefinitionAccountIds] = useState('');
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [creatingDefinition, setCreatingDefinition] = useState(false);
   const [definitionError, setDefinitionError] = useState<string | null>(null);
 
@@ -68,6 +68,20 @@ export function SchedulesPage() {
         limit: 50
       }),
     [refreshKey, scheduleType, session]
+  );
+
+  const {
+    data: accounts,
+    loading: accountsLoading,
+    error: accountsError
+  } = useAsyncData(
+    () =>
+      listAccounts(session!, {
+        status: 'active',
+        postableOnly: true,
+        limit: 250
+      }),
+    [refreshKey, session]
   );
 
   const { data, loading, error } = useAsyncData(
@@ -101,13 +115,8 @@ export function SchedulesPage() {
   }
 
   async function handleCreateDefinition() {
-    const glAccountIds = definitionAccountIds
-      .split(/[\s,]+/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    if (scheduleType === 'all' || definitionName.trim() === '' || glAccountIds.length === 0) {
-      setDefinitionError('Choose a specific schedule type, enter a name, and provide at least one GL account ID.');
+    if (scheduleType === 'all' || definitionName.trim() === '' || selectedAccountIds.length === 0) {
+      setDefinitionError('Choose a specific schedule type, enter a name, and select at least one GL account.');
       return;
     }
 
@@ -119,17 +128,23 @@ export function SchedulesPage() {
         scheduleType,
         name: definitionName,
         description: definitionDescription.trim() === '' ? undefined : definitionDescription,
-        glAccountIds
+        glAccountIds: selectedAccountIds
       });
       setDefinitionName('');
       setDefinitionDescription('');
-      setDefinitionAccountIds('');
+      setSelectedAccountIds([]);
       setRefreshKey((value) => value + 1);
     } catch (cause) {
       setDefinitionError(cause instanceof Error ? cause.message : 'Schedule definition creation failed.');
     } finally {
       setCreatingDefinition(false);
     }
+  }
+
+  function toggleAccount(accountId: string) {
+    setSelectedAccountIds((current) =>
+      current.includes(accountId) ? current.filter((selected) => selected !== accountId) : [...current, accountId]
+    );
   }
 
   return (
@@ -181,7 +196,7 @@ export function SchedulesPage() {
           <Badge value={`${definitions?.length ?? 0} active`} />
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_2fr_auto] lg:items-end">
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
             <Field label="Definition name">
               <TextInput value={definitionName} onChange={(event) => setDefinitionName(event.target.value)} placeholder="Trade payables" />
             </Field>
@@ -192,16 +207,47 @@ export function SchedulesPage() {
                 placeholder="Optional"
               />
             </Field>
-            <Field label="GL account IDs" hint="Paste one or more account UUIDs, separated by commas or spaces.">
-              <TextArea
-                value={definitionAccountIds}
-                onChange={(event) => setDefinitionAccountIds(event.target.value)}
-                placeholder="00000000-0000-4000-8000-000000000000"
-              />
-            </Field>
             <Button onClick={handleCreateDefinition} disabled={creatingDefinition || scheduleType === 'all'}>
               {creatingDefinition ? 'Creating…' : 'Create'}
             </Button>
+          </div>
+
+          <div className="rounded-2xl border border-black/8 bg-white/70 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-ink">GL accounts</div>
+                <div className="text-xs text-black/55">Select the accounts that feed the definition.</div>
+              </div>
+              <Badge value={`${selectedAccountIds.length} selected`} />
+            </div>
+            {accountsLoading ? <LoadingState label="Loading accounts…" /> : null}
+            {accountsError !== null ? <ErrorState title="Account list failed" body={accountsError} /> : null}
+            {!accountsLoading && accountsError === null && accounts !== null && accounts.length === 0 ? (
+              <EmptyState title="No active accounts" body="Add active postable GL accounts before creating schedule definitions." />
+            ) : null}
+            {!accountsLoading && accountsError === null && accounts !== null && accounts.length > 0 ? (
+              <div className="grid max-h-72 gap-2 overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+                {accounts.map((account) => (
+                  <label
+                    key={account.accountId}
+                    className="flex min-h-16 cursor-pointer items-start gap-3 rounded-xl border border-black/8 bg-white px-3 py-3 text-sm transition hover:border-accent/40"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-black/20 text-accent focus:ring-accent/30"
+                      checked={selectedAccountIds.includes(account.accountId)}
+                      onChange={() => toggleAccount(account.accountId)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold text-ink">
+                        {account.code} {account.name}
+                      </span>
+                      <span className="block text-xs text-black/50">{titleCase(account.type)}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {definitionsLoading ? <LoadingState label="Loading definitions…" /> : null}
