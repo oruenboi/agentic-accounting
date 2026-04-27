@@ -11,6 +11,7 @@
     "build:api": "npm run build --workspace @agentic-accounting/api",
     "build:web": "npm run build --workspace @agentic-accounting/web",
     "test:api": "npm run test --workspace @agentic-accounting/api",
+    "test:db": "node infra/testing/db-smoke.mjs",
     "test:web": "npm run test --workspace @agentic-accounting/web",
     "dev:api": "npm run start:dev --workspace @agentic-accounting/api",
     "dev:web": "npm run dev --workspace @agentic-accounting/web",
