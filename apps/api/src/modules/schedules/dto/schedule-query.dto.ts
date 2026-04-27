@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 const scheduleTypes = [
   'bank',
@@ -52,4 +52,45 @@ export class GenerateScheduleRunDto extends BaseScheduleQueryDto {
 
   @IsDateString()
   as_of_date!: string;
+}
+
+export class ListScheduleDefinitionsQueryDto extends BaseScheduleQueryDto {
+  @IsOptional()
+  @IsIn(scheduleTypes)
+  schedule_type?: string;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  is_active?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === undefined || value === '' ? 50 : Number(value)))
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 50;
+}
+
+export class CreateScheduleDefinitionDto extends BaseScheduleQueryDto {
+  @IsIn(scheduleTypes)
+  schedule_type!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  description?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  gl_account_ids!: string[];
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  group_by?: string;
 }

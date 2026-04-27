@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeTool, generateScheduleRun, getScheduleRun, getTrialBalanceReport, listScheduleRuns, OperatorApiError } from './api';
+import {
+  createScheduleDefinition,
+  executeTool,
+  generateScheduleRun,
+  getScheduleRun,
+  getTrialBalanceReport,
+  listScheduleDefinitions,
+  listScheduleRuns,
+  OperatorApiError
+} from './api';
 import type { OperatorSession } from './session';
 
 const session: OperatorSession = {
@@ -115,6 +124,99 @@ describe('getTrialBalanceReport', () => {
 });
 
 describe('schedule helpers', () => {
+  it('lists schedule definitions from the schedules API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-7',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          items: [
+            {
+              schedule_definition_id: 'definition-1',
+              firm_id: 'firm-1',
+              organization_id: 'org-1',
+              schedule_type: 'accounts_payable',
+              name: 'Trade payables',
+              gl_account_ids: ['account-1'],
+              generation_strategy: 'ledger_derived',
+              is_active: true,
+              accounts: [{ account_id: 'account-1', code: '2000', name: 'Accounts Payable' }]
+            }
+          ]
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listScheduleDefinitions(session, { scheduleType: 'accounts_payable', isActive: true, limit: 10 })).resolves.toEqual([
+      expect.objectContaining({
+        scheduleDefinitionId: 'definition-1',
+        name: 'Trade payables',
+        scheduleType: 'accounts_payable',
+        glAccountIds: ['account-1'],
+        accounts: [expect.objectContaining({ accountId: 'account-1', code: '2000' })]
+      })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.com/api/v1/schedules/definitions?organization_id=org-1&schedule_type=accounts_payable&is_active=true&limit=10',
+      {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      }
+    );
+  });
+
+  it('creates a schedule definition through the schedules API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-8',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          schedule_definition_id: 'definition-1',
+          firm_id: 'firm-1',
+          organization_id: 'org-1',
+          schedule_type: 'accounts_payable',
+          name: 'Trade payables',
+          gl_account_ids: ['account-1'],
+          generation_strategy: 'ledger_derived',
+          is_active: true
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      createScheduleDefinition(session, {
+        scheduleType: 'accounts_payable',
+        name: 'Trade payables',
+        glAccountIds: ['account-1']
+      })
+    ).resolves.toEqual(expect.objectContaining({ scheduleDefinitionId: 'definition-1', generationStrategy: 'ledger_derived' }));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/schedules/definitions', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        schedule_type: 'accounts_payable',
+        name: 'Trade payables',
+        gl_account_ids: ['account-1']
+      })
+    });
+  });
+
   it('lists schedule runs from the schedules API', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

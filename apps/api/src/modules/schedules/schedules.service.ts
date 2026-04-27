@@ -2,7 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 import { TenantAccessService } from '../auth/tenant-access.service';
 import { DatabaseService } from '../database/database.service';
-import type { GenerateScheduleRunDto, GetScheduleRunQueryDto, ListScheduleRunsQueryDto } from './dto/schedule-query.dto';
+import type {
+  CreateScheduleDefinitionDto,
+  GenerateScheduleRunDto,
+  GetScheduleRunQueryDto,
+  ListScheduleDefinitionsQueryDto,
+  ListScheduleRunsQueryDto
+} from './dto/schedule-query.dto';
 
 @Injectable()
 export class SchedulesService {
@@ -10,6 +16,151 @@ export class SchedulesService {
     private readonly databaseService: DatabaseService,
     private readonly tenantAccessService: TenantAccessService
   ) {}
+
+  async listScheduleDefinitions(query: ListScheduleDefinitionsQueryDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, query.organization_id);
+    const result = await this.databaseService.query(
+      `
+        select
+          sd.id::text as schedule_definition_id,
+          sd.firm_id::text,
+          sd.organization_id::text,
+          sd.schedule_type,
+          sd.name,
+          sd.description,
+          sd.gl_account_ids::text[] as gl_account_ids,
+          sd.generation_strategy,
+          sd.group_by,
+          sd.is_active,
+          sd.metadata,
+          sd.created_at,
+          sd.updated_at,
+          coalesce(
+            jsonb_agg(
+              jsonb_build_object(
+                'account_id', a.id::text,
+                'code', a.code,
+                'name', a.name,
+                'type', a.type,
+                'subtype', a.subtype,
+                'status', a.status
+              )
+              order by a.code, a.name
+            ) filter (where a.id is not null),
+            '[]'::jsonb
+          ) as accounts
+        from public.schedule_definitions sd
+        left join public.accounts a
+          on a.id = any(sd.gl_account_ids)
+          and a.organization_id = $1::uuid
+        where sd.firm_id = $2::uuid
+          and (sd.organization_id = $1::uuid or sd.organization_id is null)
+          and ($3::text is null or sd.schedule_type = $3::text)
+          and ($4::boolean is null or sd.is_active = $4::boolean)
+        group by sd.id
+        order by sd.is_active desc, sd.schedule_type, sd.name
+        limit $5::int
+      `,
+      [
+        query.organization_id,
+        actorContext.firmId,
+        query.schedule_type ?? null,
+        query.is_active === undefined ? null : query.is_active === 'true',
+        query.limit ?? 50
+      ]
+    );
+
+    return {
+      organization_id: query.organization_id,
+      actor_context: actorContext,
+      filters: {
+        schedule_type: query.schedule_type ?? null,
+        is_active: query.is_active === undefined ? null : query.is_active === 'true',
+        limit: query.limit ?? 50
+      },
+      items: result.rows
+    };
+  }
+
+  async createScheduleDefinition(input: CreateScheduleDefinitionDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const glAccountIds = [...new Set(input.gl_account_ids)];
+    const name = input.name.trim();
+    const description = input.description?.trim() || null;
+    const groupBy = input.group_by?.trim() || null;
+
+    if (name === '') {
+      throw new BadRequestException('Schedule definition name is required.');
+    }
+
+    const accountResult = await this.databaseService.query<{ account_id: string }>(
+      `
+        select id::text as account_id
+        from public.accounts
+        where organization_id = $1::uuid
+          and firm_id = $2::uuid
+          and status = 'active'
+          and id = any($3::uuid[])
+      `,
+      [input.organization_id, actorContext.firmId, glAccountIds]
+    );
+
+    const matchedAccountIds = new Set(accountResult.rows.map((row) => row.account_id));
+    const missingAccountIds = glAccountIds.filter((accountId) => !matchedAccountIds.has(accountId));
+
+    if (missingAccountIds.length > 0) {
+      throw new BadRequestException('All GL accounts must be active accounts in the requested organization.');
+    }
+
+    const result = await this.databaseService.query(
+      `
+        insert into public.schedule_definitions (
+          firm_id,
+          organization_id,
+          schedule_type,
+          name,
+          description,
+          gl_account_ids,
+          generation_strategy,
+          group_by,
+          is_active,
+          metadata
+        )
+        values (
+          $1::uuid,
+          $2::uuid,
+          $3,
+          $4,
+          $5,
+          $6::uuid[],
+          'ledger_derived',
+          $7,
+          true,
+          '{}'::jsonb
+        )
+        returning
+          id::text as schedule_definition_id,
+          firm_id::text,
+          organization_id::text,
+          schedule_type,
+          name,
+          description,
+          gl_account_ids::text[] as gl_account_ids,
+          generation_strategy,
+          group_by,
+          is_active,
+          metadata,
+          created_at,
+          updated_at
+      `,
+      [actorContext.firmId, input.organization_id, input.schedule_type, name, description, glAccountIds, groupBy]
+    );
+
+    return {
+      ...result.rows[0],
+      actor_context: actorContext
+    };
+  }
 
   async listScheduleRuns(query: ListScheduleRunsQueryDto, actor: AuthenticatedActor) {
     const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, query.organization_id);

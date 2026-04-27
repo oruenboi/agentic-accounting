@@ -223,6 +223,32 @@ export interface ScheduleRunSummary {
   reconciliationReviewedByUserId: string | null;
 }
 
+export interface ScheduleDefinitionAccount {
+  accountId: string;
+  code: string | null;
+  name: string | null;
+  type: string | null;
+  subtype: string | null;
+  status: string | null;
+}
+
+export interface ScheduleDefinitionSummary {
+  scheduleDefinitionId: string;
+  firmId: string | null;
+  organizationId: string | null;
+  scheduleType: string;
+  name: string;
+  description: string | null;
+  glAccountIds: string[];
+  generationStrategy: string;
+  groupBy: string | null;
+  isActive: boolean;
+  metadata: Record<string, unknown> | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  accounts: ScheduleDefinitionAccount[];
+}
+
 export interface ScheduleRunRow {
   scheduleRunRowId: string;
   rowOrder: number;

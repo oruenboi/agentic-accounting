@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 
@@ -31,6 +31,135 @@ describe('SchedulesService', () => {
     jest.resetAllMocks();
     tenantAccessService.assertOrganizationAccess.mockResolvedValue(actorContext);
     service = new SchedulesService(databaseService as never, tenantAccessService as never);
+  });
+
+  it('lists schedule definitions after asserting organization access', async () => {
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          schedule_definition_id: 'definition-1',
+          organization_id: 'org-1',
+          schedule_type: 'accounts_payable',
+          name: 'Trade payables',
+          gl_account_ids: ['account-1'],
+          generation_strategy: 'ledger_derived',
+          is_active: true
+        }
+      ]
+    });
+
+    await expect(
+      service.listScheduleDefinitions(
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          schedule_type: 'accounts_payable',
+          is_active: 'true',
+          limit: 20
+        },
+        actor
+      )
+    ).resolves.toEqual({
+      organization_id: '550e8400-e29b-41d4-a716-446655440000',
+      actor_context: actorContext,
+      filters: {
+        schedule_type: 'accounts_payable',
+        is_active: true,
+        limit: 20
+      },
+      items: [
+        {
+          schedule_definition_id: 'definition-1',
+          organization_id: 'org-1',
+          schedule_type: 'accounts_payable',
+          name: 'Trade payables',
+          gl_account_ids: ['account-1'],
+          generation_strategy: 'ledger_derived',
+          is_active: true
+        }
+      ]
+    });
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, '550e8400-e29b-41d4-a716-446655440000');
+    expect(databaseService.query).toHaveBeenCalledWith(expect.stringContaining('from public.schedule_definitions sd'), [
+      '550e8400-e29b-41d4-a716-446655440000',
+      'firm-1',
+      'accounts_payable',
+      true,
+      20
+    ]);
+  });
+
+  it('creates a ledger-derived schedule definition after validating accounts', async () => {
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [{ account_id: '660e8400-e29b-41d4-a716-446655440001' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            schedule_definition_id: 'definition-1',
+            firm_id: 'firm-1',
+            organization_id: '550e8400-e29b-41d4-a716-446655440000',
+            schedule_type: 'accounts_payable',
+            name: 'Trade payables',
+            gl_account_ids: ['660e8400-e29b-41d4-a716-446655440001'],
+            generation_strategy: 'ledger_derived',
+            is_active: true
+          }
+        ]
+      });
+
+    await expect(
+      service.createScheduleDefinition(
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          schedule_type: 'accounts_payable',
+          name: ' Trade payables ',
+          gl_account_ids: ['660e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440001']
+        },
+        actor
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        schedule_definition_id: 'definition-1',
+        schedule_type: 'accounts_payable',
+        name: 'Trade payables',
+        gl_account_ids: ['660e8400-e29b-41d4-a716-446655440001'],
+        generation_strategy: 'ledger_derived',
+        actor_context: actorContext
+      })
+    );
+
+    expect(databaseService.query).toHaveBeenNthCalledWith(1, expect.stringContaining('from public.accounts'), [
+      '550e8400-e29b-41d4-a716-446655440000',
+      'firm-1',
+      ['660e8400-e29b-41d4-a716-446655440001']
+    ]);
+    expect(databaseService.query).toHaveBeenNthCalledWith(2, expect.stringContaining('insert into public.schedule_definitions'), [
+      'firm-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      'accounts_payable',
+      'Trade payables',
+      null,
+      ['660e8400-e29b-41d4-a716-446655440001'],
+      null
+    ]);
+  });
+
+  it('rejects schedule definitions with accounts outside the organization', async () => {
+    databaseService.query.mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      service.createScheduleDefinition(
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          schedule_type: 'accounts_payable',
+          name: 'Trade payables',
+          gl_account_ids: ['660e8400-e29b-41d4-a716-446655440001']
+        },
+        actor
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('lists schedule runs after asserting organization access', async () => {

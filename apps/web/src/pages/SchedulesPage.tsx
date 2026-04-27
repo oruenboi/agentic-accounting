@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { generateScheduleRun, listScheduleRuns } from '../lib/api';
+import { createScheduleDefinition, generateScheduleRun, listScheduleDefinitions, listScheduleRuns } from '../lib/api';
 import { formatCurrency, formatDateTime } from '../lib/format';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Field, Select, TextInput } from '../components/ui/Field';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Field, Select, TextArea, TextInput } from '../components/ui/Field';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
 import { Table, TableCell, TableRow } from '../components/ui/Table';
 import { useAsyncData } from './useAsyncData';
@@ -49,6 +50,25 @@ export function SchedulesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [definitionName, setDefinitionName] = useState('');
+  const [definitionDescription, setDefinitionDescription] = useState('');
+  const [definitionAccountIds, setDefinitionAccountIds] = useState('');
+  const [creatingDefinition, setCreatingDefinition] = useState(false);
+  const [definitionError, setDefinitionError] = useState<string | null>(null);
+
+  const {
+    data: definitions,
+    loading: definitionsLoading,
+    error: definitionsError
+  } = useAsyncData(
+    () =>
+      listScheduleDefinitions(session!, {
+        scheduleType: scheduleType === 'all' ? undefined : scheduleType,
+        isActive: true,
+        limit: 50
+      }),
+    [refreshKey, scheduleType, session]
+  );
 
   const { data, loading, error } = useAsyncData(
     () =>
@@ -77,6 +97,38 @@ export function SchedulesPage() {
       setGenerationError(cause instanceof Error ? cause.message : 'Schedule generation failed.');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleCreateDefinition() {
+    const glAccountIds = definitionAccountIds
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (scheduleType === 'all' || definitionName.trim() === '' || glAccountIds.length === 0) {
+      setDefinitionError('Choose a specific schedule type, enter a name, and provide at least one GL account ID.');
+      return;
+    }
+
+    setCreatingDefinition(true);
+    setDefinitionError(null);
+
+    try {
+      await createScheduleDefinition(session!, {
+        scheduleType,
+        name: definitionName,
+        description: definitionDescription.trim() === '' ? undefined : definitionDescription,
+        glAccountIds
+      });
+      setDefinitionName('');
+      setDefinitionDescription('');
+      setDefinitionAccountIds('');
+      setRefreshKey((value) => value + 1);
+    } catch (cause) {
+      setDefinitionError(cause instanceof Error ? cause.message : 'Schedule definition creation failed.');
+    } finally {
+      setCreatingDefinition(false);
     }
   }
 
@@ -119,6 +171,70 @@ export function SchedulesPage() {
           </div>
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle>Definitions</CardTitle>
+            <p className="mt-1 text-sm text-black/55">Ledger-derived schedule mappings for this organization.</p>
+          </div>
+          <Badge value={`${definitions?.length ?? 0} active`} />
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_2fr_auto] lg:items-end">
+            <Field label="Definition name">
+              <TextInput value={definitionName} onChange={(event) => setDefinitionName(event.target.value)} placeholder="Trade payables" />
+            </Field>
+            <Field label="Description">
+              <TextInput
+                value={definitionDescription}
+                onChange={(event) => setDefinitionDescription(event.target.value)}
+                placeholder="Optional"
+              />
+            </Field>
+            <Field label="GL account IDs" hint="Paste one or more account UUIDs, separated by commas or spaces.">
+              <TextArea
+                value={definitionAccountIds}
+                onChange={(event) => setDefinitionAccountIds(event.target.value)}
+                placeholder="00000000-0000-4000-8000-000000000000"
+              />
+            </Field>
+            <Button onClick={handleCreateDefinition} disabled={creatingDefinition || scheduleType === 'all'}>
+              {creatingDefinition ? 'Creating…' : 'Create'}
+            </Button>
+          </div>
+
+          {definitionsLoading ? <LoadingState label="Loading definitions…" /> : null}
+          {definitionsError !== null ? <ErrorState title="Definition list failed" body={definitionsError} /> : null}
+          {definitionError !== null ? <ErrorState title="Definition creation failed" body={definitionError} /> : null}
+          {!definitionsLoading && definitionsError === null && definitions !== null && definitions.length === 0 ? (
+            <EmptyState title="No definitions" body="Create a schedule definition before generating a run for this schedule type." />
+          ) : null}
+          {!definitionsLoading && definitionsError === null && definitions !== null && definitions.length > 0 ? (
+            <Table columns={['Name', 'Type', 'Strategy', 'Accounts']}>
+              {definitions.map((definition) => (
+                <TableRow key={definition.scheduleDefinitionId}>
+                  <TableCell>
+                    <div className="font-semibold text-ink">{definition.name}</div>
+                    <div className="text-xs text-black/55">{definition.description ?? definition.scheduleDefinitionId}</div>
+                  </TableCell>
+                  <TableCell>{titleCase(definition.scheduleType)}</TableCell>
+                  <TableCell>
+                    <Badge value={definition.generationStrategy} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-ink">
+                      {definition.accounts.length > 0
+                        ? definition.accounts.map((account) => `${account.code ?? 'No code'} ${account.name ?? account.accountId}`).join(', ')
+                        : definition.glAccountIds.join(', ')}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </Table>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {loading ? <LoadingState label="Loading schedule runs…" /> : null}
       {error !== null ? <ErrorState title="Schedule list failed" body={error} /> : null}

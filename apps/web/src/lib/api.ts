@@ -10,6 +10,7 @@ import type {
   ProposalDetail,
   ProposalSummary,
   ReportEnvelope,
+  ScheduleDefinitionSummary,
   ScheduleRunDetail,
   ScheduleRunSummary,
   StatementRow,
@@ -647,6 +648,71 @@ function scheduleRunSummary(item: Record<string, unknown>): ScheduleRunSummary {
     reconciliationReviewedAt: item.reconciliation_reviewed_at ? String(item.reconciliation_reviewed_at) : null,
     reconciliationReviewedByUserId: item.reconciliation_reviewed_by_user_id ? String(item.reconciliation_reviewed_by_user_id) : null
   };
+}
+
+function scheduleDefinitionSummary(item: Record<string, unknown>): ScheduleDefinitionSummary {
+  return {
+    scheduleDefinitionId: String(item.schedule_definition_id),
+    firmId: item.firm_id ? String(item.firm_id) : null,
+    organizationId: item.organization_id ? String(item.organization_id) : null,
+    scheduleType: String(item.schedule_type ?? 'unknown'),
+    name: String(item.name ?? 'Untitled schedule'),
+    description: item.description ? String(item.description) : null,
+    glAccountIds: Array.isArray(item.gl_account_ids) ? item.gl_account_ids.map(String) : [],
+    generationStrategy: String(item.generation_strategy ?? 'unknown'),
+    groupBy: item.group_by ? String(item.group_by) : null,
+    isActive: Boolean(item.is_active),
+    metadata: (item.metadata ?? null) as Record<string, unknown> | null,
+    createdAt: item.created_at ? String(item.created_at) : null,
+    updatedAt: item.updated_at ? String(item.updated_at) : null,
+    accounts: ((item.accounts ?? []) as Array<Record<string, unknown>>).map((account) => ({
+      accountId: String(account.account_id),
+      code: account.code ? String(account.code) : null,
+      name: account.name ? String(account.name) : null,
+      type: account.type ? String(account.type) : null,
+      subtype: account.subtype ? String(account.subtype) : null,
+      status: account.status ? String(account.status) : null
+    }))
+  };
+}
+
+export async function listScheduleDefinitions(
+  session: Session,
+  filters: { scheduleType?: string; isActive?: boolean; limit?: number }
+): Promise<ScheduleDefinitionSummary[]> {
+  const result = await fetchApi<{ items?: Array<Record<string, unknown>> }>(session, '/api/v1/schedules/definitions', {
+    schedule_type: filters.scheduleType,
+    is_active: filters.isActive === undefined ? undefined : String(filters.isActive),
+    limit: filters.limit ?? 50
+  });
+
+  return (result.items ?? []).map(scheduleDefinitionSummary);
+}
+
+export async function createScheduleDefinition(
+  session: Session,
+  input: { scheduleType: string; name: string; description?: string; glAccountIds: string[]; groupBy?: string }
+): Promise<ScheduleDefinitionSummary> {
+  const result = await postApi<
+    {
+      organization_id: string;
+      schedule_type: string;
+      name: string;
+      description?: string;
+      gl_account_ids: string[];
+      group_by?: string;
+    },
+    Record<string, unknown>
+  >(session, '/api/v1/schedules/definitions', {
+    organization_id: session.organizationId,
+    schedule_type: input.scheduleType,
+    name: input.name,
+    description: input.description,
+    gl_account_ids: input.glAccountIds,
+    group_by: input.groupBy
+  });
+
+  return scheduleDefinitionSummary(result);
 }
 
 export async function listScheduleRuns(
