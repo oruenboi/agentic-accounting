@@ -10,6 +10,8 @@ import type {
   ProposalDetail,
   ProposalSummary,
   ReportEnvelope,
+  ScheduleRunDetail,
+  ScheduleRunSummary,
   StatementRow,
   TrialBalanceRow
 } from './types';
@@ -96,6 +98,29 @@ async function fetchReport<TResult>(session: Session, reportPath: string, params
 
   if (!response.ok) {
     throw new OperatorApiError('HTTP_ERROR', `Report request failed with status ${response.status}.`);
+  }
+
+  return parseApiResponse<TResult>(response);
+}
+
+async function fetchApi<TResult>(session: Session, apiPath: string, params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  query.set('organization_id', session.organizationId);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+
+  const response = await fetch(path(session.apiBaseUrl, `${apiPath}?${query.toString()}`), {
+    headers: {
+      Authorization: `Bearer ${session.bearerToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new OperatorApiError('HTTP_ERROR', `API request failed with status ${response.status}.`);
   }
 
   return parseApiResponse<TResult>(response);
@@ -583,4 +608,75 @@ export async function getGeneralLedgerReport(
       runningBalance: String(item.running_balance ?? '0.00')
     }))
   );
+}
+
+function scheduleRunSummary(item: Record<string, unknown>): ScheduleRunSummary {
+  return {
+    scheduleRunId: String(item.schedule_run_id),
+    organizationId: String(item.organization_id),
+    scheduleDefinitionId: String(item.schedule_definition_id),
+    scheduleName: item.schedule_name ? String(item.schedule_name) : null,
+    scheduleDescription: item.schedule_description ? String(item.schedule_description) : null,
+    scheduleType: String(item.schedule_type ?? 'unknown'),
+    asOfDate: String(item.as_of_date),
+    status: String(item.status ?? 'unknown'),
+    glBalance: String(item.gl_balance ?? '0.00'),
+    scheduleTotal: String(item.schedule_total ?? '0.00'),
+    variance: String(item.variance ?? '0.00'),
+    generatedAt: item.generated_at ? String(item.generated_at) : null,
+    reviewedAt: item.reviewed_at ? String(item.reviewed_at) : null,
+    reviewedByUserId: item.reviewed_by_user_id ? String(item.reviewed_by_user_id) : null,
+    reconciliationStatus: item.reconciliation_status ? String(item.reconciliation_status) : null,
+    reconciliationReviewedAt: item.reconciliation_reviewed_at ? String(item.reconciliation_reviewed_at) : null,
+    reconciliationReviewedByUserId: item.reconciliation_reviewed_by_user_id ? String(item.reconciliation_reviewed_by_user_id) : null
+  };
+}
+
+export async function listScheduleRuns(
+  session: Session,
+  filters: { scheduleType?: string; status?: string; asOfDate?: string; limit?: number }
+): Promise<ScheduleRunSummary[]> {
+  const result = await fetchApi<{ items?: Array<Record<string, unknown>> }>(session, '/api/v1/schedules/runs', {
+    schedule_type: filters.scheduleType,
+    status: filters.status,
+    as_of_date: filters.asOfDate,
+    limit: filters.limit ?? 25
+  });
+
+  return (result.items ?? []).map(scheduleRunSummary);
+}
+
+export async function getScheduleRun(session: Session, scheduleRunId: string): Promise<ScheduleRunDetail> {
+  const result = await fetchApi<Record<string, unknown>>(session, `/api/v1/schedules/runs/${scheduleRunId}`, {});
+  const summary = scheduleRunSummary(result);
+
+  return {
+    ...summary,
+    glAccountIds: Array.isArray(result.gl_account_ids) ? result.gl_account_ids.map(String) : [],
+    generationStrategy: result.generation_strategy ? String(result.generation_strategy) : null,
+    groupBy: result.group_by ? String(result.group_by) : null,
+    generatedByActorType: result.generated_by_actor_type ? String(result.generated_by_actor_type) : null,
+    generatedByActorId: result.generated_by_actor_id ? String(result.generated_by_actor_id) : null,
+    metadata: (result.metadata ?? null) as Record<string, unknown> | null,
+    reconciliationId: result.reconciliation_id ? String(result.reconciliation_id) : null,
+    reconciliationNotes: result.reconciliation_notes ? String(result.reconciliation_notes) : null,
+    reconciliationMetadata: (result.reconciliation_metadata ?? null) as Record<string, unknown> | null,
+    actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
+    rows: ((result.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      scheduleRunRowId: String(row.schedule_run_row_id),
+      rowOrder: Number(row.row_order ?? 0),
+      referenceType: row.reference_type ? String(row.reference_type) : null,
+      referenceId: row.reference_id ? String(row.reference_id) : null,
+      referenceNumber: row.reference_number ? String(row.reference_number) : null,
+      counterpartyId: row.counterparty_id ? String(row.counterparty_id) : null,
+      counterpartyName: row.counterparty_name ? String(row.counterparty_name) : null,
+      documentDate: row.document_date ? String(row.document_date) : null,
+      dueDate: row.due_date ? String(row.due_date) : null,
+      openingAmount: String(row.opening_amount ?? '0.00'),
+      movementAmount: String(row.movement_amount ?? '0.00'),
+      closingAmount: String(row.closing_amount ?? '0.00'),
+      ageBucket: row.age_bucket ? String(row.age_bucket) : null,
+      metadata: (row.metadata ?? null) as Record<string, unknown> | null
+    }))
+  };
 }

@@ -202,3 +202,54 @@ export interface GeneralLedgerRow {
   openingBalance: string | number;
   runningBalance: string | number;
 }
+
+export interface ScheduleRunSummary {
+  scheduleRunId: string;
+  organizationId: string;
+  scheduleDefinitionId: string;
+  scheduleName: string | null;
+  scheduleDescription: string | null;
+  scheduleType: string;
+  asOfDate: string;
+  status: string;
+  glBalance: string | number;
+  scheduleTotal: string | number;
+  variance: string | number;
+  generatedAt: string | null;
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+  reconciliationStatus: string | null;
+  reconciliationReviewedAt: string | null;
+  reconciliationReviewedByUserId: string | null;
+}
+
+export interface ScheduleRunRow {
+  scheduleRunRowId: string;
+  rowOrder: number;
+  referenceType: string | null;
+  referenceId: string | null;
+  referenceNumber: string | null;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  documentDate: string | null;
+  dueDate: string | null;
+  openingAmount: string | number;
+  movementAmount: string | number;
+  closingAmount: string | number;
+  ageBucket: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ScheduleRunDetail extends ScheduleRunSummary {
+  glAccountIds: string[];
+  generationStrategy: string | null;
+  groupBy: string | null;
+  generatedByActorType: string | null;
+  generatedByActorId: string | null;
+  metadata: Record<string, unknown> | null;
+  reconciliationId: string | null;
+  reconciliationNotes: string | null;
+  reconciliationMetadata: Record<string, unknown> | null;
+  actorContext?: ActorContext;
+  rows: ScheduleRunRow[];
+}

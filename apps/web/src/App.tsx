@@ -11,6 +11,8 @@ import { ApprovalDetailPage } from './pages/ApprovalDetailPage';
 import { JournalEntriesPage } from './pages/JournalEntriesPage';
 import { JournalEntryDetailPage } from './pages/JournalEntryDetailPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SchedulesPage } from './pages/SchedulesPage';
+import { ScheduleRunDetailPage } from './pages/ScheduleRunDetailPage';
 import { AuditHomePage } from './pages/AuditHomePage';
 import { AuditTimelinePage } from './pages/AuditTimelinePage';
 
@@ -57,6 +59,8 @@ export function App() {
         <Route path="/ledger/entries" element={<JournalEntriesPage />} />
         <Route path="/ledger/entries/:entryId" element={<JournalEntryDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/schedules" element={<SchedulesPage />} />
+        <Route path="/schedules/runs/:runId" element={<ScheduleRunDetailPage />} />
         <Route path="/audit" element={<AuditHomePage />} />
         <Route path="/audit/:entityType/:entityId" element={<AuditTimelinePage />} />
       </Route>

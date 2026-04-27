@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { HealthModule } from './modules/health/health.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { SchedulesModule } from './modules/schedules/schedules.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     AuthModule,
     HealthModule,
     ReportsModule,
+    SchedulesModule,
     AgentToolsModule
   ]
 })

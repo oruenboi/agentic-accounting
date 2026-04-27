@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeTool, getTrialBalanceReport, OperatorApiError } from './api';
+import { executeTool, getScheduleRun, getTrialBalanceReport, listScheduleRuns, OperatorApiError } from './api';
 import type { OperatorSession } from './session';
 
 const session: OperatorSession = {
@@ -110,6 +110,98 @@ describe('getTrialBalanceReport', () => {
           Authorization: 'Bearer token'
         }
       }
+    );
+  });
+});
+
+describe('schedule helpers', () => {
+  it('lists schedule runs from the schedules API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-4',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          items: [
+            {
+              schedule_run_id: 'run-1',
+              organization_id: 'org-1',
+              schedule_definition_id: 'definition-1',
+              schedule_name: 'Bank schedule',
+              schedule_type: 'bank',
+              as_of_date: '2026-04-30',
+              status: 'reconciled',
+              gl_balance: '100.00',
+              schedule_total: '100.00',
+              variance: '0.00'
+            }
+          ]
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listScheduleRuns(session, { scheduleType: 'bank', status: 'reconciled', limit: 10 })).resolves.toEqual([
+      expect.objectContaining({
+        scheduleRunId: 'run-1',
+        scheduleName: 'Bank schedule',
+        scheduleType: 'bank',
+        status: 'reconciled',
+        variance: '0.00'
+      })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.com/api/v1/schedules/runs?organization_id=org-1&schedule_type=bank&status=reconciled&limit=10',
+      {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      }
+    );
+  });
+
+  it('loads one schedule run with rows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          request_id: 'request-5',
+          timestamp: '2026-04-27T00:00:00.000Z',
+          result: {
+            schedule_run_id: 'run-1',
+            organization_id: 'org-1',
+            schedule_definition_id: 'definition-1',
+            schedule_type: 'bank',
+            as_of_date: '2026-04-30',
+            status: 'generated',
+            gl_balance: '100.00',
+            schedule_total: '95.00',
+            variance: '5.00',
+            gl_account_ids: ['account-1'],
+            rows: [
+              {
+                schedule_run_row_id: 'row-1',
+                row_order: 1,
+                closing_amount: '95.00'
+              }
+            ]
+          }
+        })
+      })
+    );
+
+    await expect(getScheduleRun(session, 'run-1')).resolves.toEqual(
+      expect.objectContaining({
+        scheduleRunId: 'run-1',
+        glAccountIds: ['account-1'],
+        rows: [expect.objectContaining({ scheduleRunRowId: 'row-1', closingAmount: '95.00' })]
+      })
     );
   });
 });

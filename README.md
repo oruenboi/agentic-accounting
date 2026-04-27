@@ -56,6 +56,7 @@ Already scaffolded in code:
   - approval queue and detail
   - posted journal entry list and detail
   - trial balance, balance sheet, profit and loss, and general ledger reports
+  - schedule run list and detail review
   - entity timeline review
 - Postgres-backed reporting endpoints for:
   - `GET /api/v1/health`
@@ -63,6 +64,8 @@ Already scaffolded in code:
   - `GET /api/v1/reports/balance-sheet`
   - `GET /api/v1/reports/profit-and-loss`
   - `GET /api/v1/reports/general-ledger`
+  - `GET /api/v1/schedules/runs`
+  - `GET /api/v1/schedules/runs/:runId`
   - `GET /api/v1/agent-tools/schema`
   - `GET /api/v1/agent-tools/tool/:toolName`
   - `POST /api/v1/agent-tools/execute`
@@ -70,7 +73,7 @@ Already scaffolded in code:
 
 Still to implement:
 - non-user client registry and stronger agent auth beyond the current bounded configured-client path
-- schedule runtime and reporting application services
+- schedule generation runtime and broader schedule workflow services
 - broader operator UI coverage for reports, schedules, close, settings, and tasks
 - fuller audit/event surfacing and operational hardening around the current workflow engine
 
@@ -315,6 +318,7 @@ The current console supports:
 - approval queue and approval detail with approve, reject, and escalate controls
 - posted journal entry list/detail
 - reports for trial balance, balance sheet, profit and loss, and general ledger
+- schedule run list/detail review for persisted balance sheet support schedules
 - entity audit timeline review
 
 The session bootstrap will prefill the API base URL from `VITE_DEFAULT_API_BASE_URL` when present. For the intended production deployment, use:

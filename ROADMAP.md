@@ -37,6 +37,7 @@ The first runtime slice now includes:
 - deterministic minimal tenant seed rendering
 - React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines
 - React operator console report views for trial balance, balance sheet, profit and loss, and general ledger
+- read-only schedule run API and operator console review screens for persisted balance sheet support schedules
 - API-only VPS deployment assets, operator-console VPS deployment assets, and Netlify static web deployment config
 
 ## What Is Still Implementation-Pending
@@ -44,7 +45,7 @@ The first runtime slice now includes:
 The main implementation gaps are:
 - schedule schema and generation runtime
 - worker/background execution
-- broader operator UI for schedules, close, settings, and tasks
+- broader operator UI for close, settings, and tasks
 - OpenClaw plugin package and host integration
 - one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup
 - production hardening and operational runbooks
@@ -53,8 +54,8 @@ Some lower-level foundations for these areas already exist, but the end-to-end p
 
 ## Near-Term Milestones
 
-1. Expand operator UI coverage for reporting, schedules, close, settings, and tasks.
-2. Implement schedule generation and reconciliation runtime.
+1. Expand operator UI coverage for close, settings, and tasks.
+2. Implement schedule generation and reconciliation runtime beyond the current read-only schedule review surface.
 3. Add worker/background execution for exports, schedules, close support, and maintenance jobs.
 4. Package the SDK, schemas, domain helpers, and OpenClaw plugin.
 5. Implement the planned one-click bootstrap UX.
