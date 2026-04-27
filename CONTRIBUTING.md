@@ -1,10 +1,10 @@
 # Contributing to Agentic Accounting
 
-This repository is being built as an open-source, multi-tenant accounting control plane for firms and agent-assisted workflows. The planning and documentation layer is currently ahead of the runtime implementation, so contributions should follow the documented architecture rather than improvising new product shape.
+This repository is being built as an open-source, multi-tenant accounting control plane for firms and agent-assisted workflows. The runtime now includes an API, operator console, Supabase migrations, and deployment assets, but the planning docs still define the intended product shape for larger changes.
 
 ## Project Maturity
 
-The repo is currently documentation-first and schema-first.
+The repo is currently pre-1.0.
 
 What is already defined:
 - multi-tenant `firm` / `organization` model
@@ -14,12 +14,11 @@ What is already defined:
 - release-facing README and quickstart docs
 
 What is still being implemented:
-- broader runtime API services beyond the current journal, approval, audit, and reporting slices
-- schedule execution and worker processes
+- advanced schedule execution strategies and worker processes
 - OpenClaw plugin package and host integration
 - release hardening, examples, and operational automation
 
-Contributions should assume the docs are authoritative until implementation work catches up.
+Contributions should align code, docs, and migrations when runtime behavior changes.
 
 ## Contribution Expectations
 
@@ -97,9 +96,13 @@ Every meaningful contribution should include:
 If the implementation is not present yet, update the docs and TODOs instead of forcing code.
 
 Suggested verification expectations:
+- `npm run build:api`
+- `npm run build:web`
+- `npm run test:api`
+- `npm run test:web`
 - migration syntax or integrity checks for SQL changes
 - policy / RLS tests where applicable
-- integration tests for approval, posting, reporting, or agent-tool behavior
+- integration tests for approval, posting, reporting, schedules, or agent-tool behavior
 
 ## Issue And PR Guidance
 

@@ -1,367 +1,243 @@
 # Agentic Accounting
 
-Open-source accounting control plane for firms that want multi-company bookkeeping, approval-gated workflows, auditability, reporting, and agent-assisted operations.
+Open-source accounting control plane for firms that need multi-company bookkeeping, approval-gated workflows, auditability, reporting, schedules, and agent-assisted operations.
 
-This repository is currently documentation- and schema-first. The architecture, storage model, workflow model, and OpenClaw integration approach are defined, but the runtime product is still being implemented.
+The project is pre-1.0, but it is no longer documentation-only. The current runtime includes a NestJS API, a React operator console, Supabase/Postgres migrations, Docker deployment assets, and Netlify static web deployment config.
 
-The first runtime slices now exist in:
-- `apps/api`: a NestJS-based backend with workflow, approval, posting, reversal, audit, and reporting tools
-- `apps/web`: a React operator console for proposals, approvals, posted entries, and audit review
+## Current Status
 
-## Who This Is For
+Implemented today:
 
-This project is aimed at:
-- accounting firms running multiple client companies
-- controllership and finance operations teams
-- developers building agent-assisted accounting workflows
-- teams that want an accounting backend with explicit approvals, audit trails, and tenant isolation
+- Supabase-backed authentication and tenant access checks.
+- Firm, organization, user, account, period, ledger, approval, audit, proposal, report, and schedule schema foundations.
+- Journal draft validation, proposal creation, approval flow, posting, reversal, and audit timeline tools.
+- Reports for trial balance, balance sheet, profit and loss, and general ledger.
+- Schedule definitions, account selection, ledger-derived schedule generation, run detail review, and variance approval.
+- Agent tool schema and execution endpoints for accounting workflows.
+- React operator console for dashboard triage, proposals, approvals, entries, reports, schedules, and entity timelines.
+- Docker deployment bundles for API-only and operator-console stacks.
+- Netlify deployment config for the static operator console.
 
-## What The Project Is
+Still in progress:
 
-The target system is a modular, multi-tenant accounting platform with:
-- a NestJS backend API
-- a React operator UI
-- Supabase as the default supported backend, with Supabase Postgres as the canonical data layer
-- Supabase Storage for documents and exports
-- a tool-oriented agent interface
-- OpenClaw as the orchestration shell for agent workflows
+- Advanced schedule strategies beyond the current ledger-derived path.
+- Worker/background execution.
+- Account maintenance UI, close dashboard, settings, and task workflows.
+- SDK, schema package, domain package, and OpenClaw plugin packaging.
+- One-click bootstrap UX and fuller production runbooks.
 
-The ledger is the source of truth. Posted accounting records are immutable, and corrections happen by reversal rather than in-place editing.
+## Architecture
 
-## Current Maturity
-
-The planning and documentation layer is ahead of the runtime implementation.
-
-Already defined in this repo:
-- multi-tenant `firm` / `organization` model
-- audit schema and audit read model
-- approval model
-- ledger schema and posting engine behavior
-- reporting and schedule design
-- storage and document model
-- API auth/client model
-- OpenClaw integration and hardening strategy
-- packaging/distribution strategy for OSS and npm packages
-
-Already scaffolded in code:
-- npm workspace root
-- `apps/api` NestJS runtime skeleton
-- `apps/web` React operator console scaffold
-- Supabase-backed auth verification and tenant access checks
-- deterministic minimal tenant bootstrap seed rendering for first usable firm/org/user/account data
-- proposal-style journal draft creation with idempotency replay/conflict handling and linked `agent_proposals`
-- operator UI routes for:
-  - dashboard triage
-  - proposal queue and detail
-  - approval queue and detail
-  - posted journal entry list and detail
-  - trial balance, balance sheet, profit and loss, and general ledger reports
-  - schedule run generation, list, and detail review
-  - entity timeline review
-- Postgres-backed reporting endpoints for:
-  - `GET /api/v1/health`
-  - `GET /api/v1/reports/trial-balance`
-  - `GET /api/v1/reports/balance-sheet`
-  - `GET /api/v1/reports/profit-and-loss`
-  - `GET /api/v1/reports/general-ledger`
-  - `GET /api/v1/schedules/runs`
-  - `GET /api/v1/schedules/runs/:runId`
-  - `POST /api/v1/schedules/runs`
-  - `GET /api/v1/agent-tools/schema`
-  - `GET /api/v1/agent-tools/tool/:toolName`
-  - `POST /api/v1/agent-tools/execute`
-  - `POST /api/v1/agent-tools/execute-batch`
-
-Still to implement:
-- non-user client registry and stronger agent auth beyond the current bounded configured-client path
-- broader schedule workflow services beyond the current ledger-derived generation path
-- broader operator UI coverage for reports, schedules, close, settings, and tasks
-- fuller audit/event surfacing and operational hardening around the current workflow engine
-
-## Architecture Summary
-
-The target shape is a modular monorepo, not microservices.
-
-Core components:
-- `apps/api`: accounting backend and tool APIs
-- `apps/web`: internal operator UI
-- `apps/workers`: background jobs and exports
-- `packages/domain`: shared accounting rules
-- `packages/schemas`: shared tool and API schemas
-- `packages/sdk`: typed client for backend and tools
-- `packages/openclaw-plugin`: OpenClaw accounting plugin
-- `infra/supabase`: schema, RLS, and SQL objects
-
-Key design principles:
-- ledger-centric accounting
-- immutable posted entries
-- tenant isolation by `organization`
-- human and agent flows converge on the same backend
-- approvals and audit are first-class constraints
-
-## Repo Structure
+This is a modular monorepo, not a microservice split.
 
 ```text
 apps/
-  api/
-  web/
-  workers/
-packages/
-  domain/
-  schemas/
-  sdk/
-  openclaw-plugin/
+  api/      NestJS API and accounting tool surface
+  web/      React operator console
 infra/
-  supabase/
-  docker/
-  ansible/
-examples/
-  api-client/
-  openclaw/
-devplan/
+  supabase/ database migrations and SQL functions
+  docker/   API and operator-console deployment bundles
+devplan/    product, architecture, and implementation planning docs
 ```
 
-## What Is Implemented Today
+Planned package directories such as `packages/domain`, `packages/schemas`, `packages/sdk`, and `packages/openclaw-plugin` are documented in `devplan/` and will be added as implementation catches up.
 
-This repository currently contains:
-- planning and architecture documents
-- Supabase migrations for audit, tenant, ledger, and approval foundations
-- documentation for reporting, schedules, storage, workflows, audit, and OpenClaw integration
-- a first NestJS API in `apps/api` with health, reporting, journal workflow, approval, posting, reversal, audit, and agent-tool execution paths
-- a first React operator console in `apps/web`
-- Docker and Netlify deployment paths for the current API and web slices
+Key design rules:
 
-The implemented database foundations include:
-- `audit_logs`
-- `approval_actions`
-- `firms`
-- `organizations`
-- `journal_entries`
-- `journal_entry_lines`
-- `journal_entry_drafts`
-- `accounting_periods`
-- `approval_requests`
-- guard logic for period overlap, immutability, and balanced posting
-- `idempotency_keys`
-- `agent_proposals`
-- reporting SQL views
-- schedule-related schema foundations
+- The ledger is the source of truth.
+- Posted entries are immutable; corrections happen by reversal.
+- Every tenant-owned operation is scoped to an organization.
+- Human and agent workflows use the same backend controls.
+- Approvals, idempotency, and audit events are first-class behavior, not UI-only conventions.
 
-## What Is Planned
+## Requirements
 
-The remaining product work is mainly:
-- broader operator UI implementation
-- reporting and schedule runtime expansion
-- richer audit and policy surfaces
-- public package publishing
-- self-hosted deployment automation
-- OpenClaw host hardening and integration rollout
+- Node.js 22 or later.
+- npm 10 or later.
+- A Supabase project, or a self-hosted Supabase/Postgres stack.
+- Docker, if using the deployment bundles.
 
-## OpenClaw Relationship
+## Install
 
-OpenClaw is the orchestration shell for agent interaction, not the accounting source of truth.
+```bash
+npm install
+```
 
-The intended split is:
-- this repo owns the accounting backend, schemas, docs, and plugin package
-- OpenClaw provides the agent host and orchestration layer
-- the initial OSS release will not vendor the OpenClaw host into this repo
-- production OpenClaw support should use a documented companion fork or upstreamed host changes once a compatible host target is validated
-- durable approval, posting, tenant enforcement, and audit remain in the accounting backend
+Build and test:
 
-OpenClaw integration and hardening are documented separately in:
-- `devplan/openclaw_integration_01.md`
-- `devplan/openclaw_distribution_hardening_01.md`
+```bash
+npm run build:api
+npm run build:web
+npm run test:api
+npm run test:web
+```
 
-## Self-Hosting Posture
+## API Quickstart
 
-This project is intended to be self-hostable.
+1. Copy the API env template:
 
-Supabase is the default and supported backend for OSS deployments. The expected setup paths are:
-- connect the platform to a hosted Supabase project for the fastest start
-- self-host Supabase if you want full infrastructure control
+```bash
+cp apps/api/.env.example apps/api/.env
+```
 
-Plain Postgres without the Supabase layer is not the primary target.
+2. Fill in:
 
-The public distribution model is:
-- a monorepo that can be cloned and deployed
-- installable npm packages for SDK, schemas, and plugin integration
-- Supabase migrations, RLS, auth assumptions, and storage model for the canonical data layer
-- optional Ansible hardening for production deployments
+```text
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
 
-The recommended release shape is:
-- platform mode for operators and self-hosters
-- package mode for developers integrating the SDK or OpenClaw plugin
+Optional local agent credentials are also documented in `apps/api/.env.example`.
 
-## Key Documentation
+3. Apply the Supabase migrations in `infra/supabase/migrations/` to your database.
 
-Start with these docs:
-- `devplan/masterPRD.md`
-- `devplan/featurePRD_01.md`
-- `devplan/architecture_summary_01.md`
-- `devplan/api_spec_v1_01.md`
-- `devplan/openclaw_integration_01.md`
-- `devplan/documentation_inventory_01.md`
+4. Start the API:
 
-Useful implementation-facing docs:
-- `devplan/ledger_posting_engine_01.md`
-- `devplan/reporting_design_01.md`
-- `devplan/schedule_engine_01.md`
-- `devplan/storage_blueprint_01.md`
-- `devplan/workflow_close_01.md`
-- `devplan/audit_read_model_01.md`
-- `devplan/api_auth_client_model_01.md`
-- `devplan/packaging_distribution_01.md`
-- `devplan/openclaw_distribution_hardening_01.md`
-- `devplan/bootstrap_ux_01.md`
+```bash
+npm run dev:api
+```
 
-Release and contribution docs:
-- `CONTRIBUTING.md`
-- `GOVERNANCE.md`
-- `SECURITY.md`
-- `ROADMAP.md`
+5. Check health:
 
-## How To Get Started
+```bash
+curl http://localhost:3000/api/v1/health
+```
 
-This repo is not yet a complete runnable product, so the right first step is to read the design docs in order:
+Authenticated tenant-scoped endpoints require a valid Supabase bearer token and an organization ID.
 
-1. `devplan/masterPRD.md`
-2. `devplan/featurePRD_01.md`
-3. `devplan/architecture_summary_01.md`
-4. `devplan/api_spec_v1_01.md`
-5. `devplan/openclaw_integration_01.md`
-6. `devplan/documentation_inventory_01.md`
+## Minimal Tenant Seed
 
-If you are here to implement the system, the next practical build order is:
-1. operator UI expansion
-2. reporting and schedule runtime
-3. worker/background execution
-4. bootstrap and deployment automation
-5. OpenClaw plugin and host integration
+The API includes a deterministic seed renderer for the smallest usable tenant context:
 
-## Local API Quickstart
-
-1. Copy [apps/api/.env.example](C:\Users\wdqia\Nexius Labs\Nexius Dev Team - Darryl Dev\agentic-accounting\apps\api\.env.example) to `apps/api/.env` and fill in:
-   - `DATABASE_URL`
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-2. Run `npm install`
-3. Run `npm run dev:api`
-4. Call:
-   - `GET /api/v1/health`
-   - `GET /api/v1/reports/*` with a valid Supabase bearer token
-   - `GET /api/v1/agent-tools/schema` with either:
-     - a valid Supabase bearer token
-     - or configured agent headers:
-       - `x-agent-client-id`
-       - `x-agent-client-secret`
-
-For tenant-scoped `agent-tools` report reads with agent credentials, also send:
-- `x-delegated-auth-user-id`
-
-The current `agent-tools` write-oriented surface now includes:
-- `validate_journal_entry`
-- `create_journal_entry_draft`
-
-`create_journal_entry_draft` currently:
-- validates the requested journal before persisting
-- writes `journal_entry_drafts` and `journal_entry_draft_lines`
-- writes a linked `agent_proposals` row
-- performs a first application-layer idempotency replay/conflict check against `idempotency_keys`
-
-## Minimal Tenant Bootstrap
-
-The API now includes a deterministic seed renderer for the smallest usable tenant context:
 - one firm
-- one app user mapped to a supplied `auth_user_id`
+- one app user mapped to a supplied Supabase `auth.users.id`
 - one organization
-- one firm membership and one organization membership
+- one firm membership and organization membership
 - one open accounting period
 - a minimal chart of accounts
 
-Render the SQL from the repo root:
+Render the seed from the repo root:
 
-```powershell
-npm run seed:render:minimal --workspace @agentic-accounting/api -- `
-  --auth-user-id 11111111-1111-4111-8111-111111111111 `
-  --user-email agent@nexiuslabs.com `
+```bash
+npm run seed:render:minimal --workspace @agentic-accounting/api -- \
+  --auth-user-id 11111111-1111-4111-8111-111111111111 \
+  --user-email agent@example.com \
   --out infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
 ```
 
-Important:
-- use a real Supabase `auth.users.id` UUID if you want bearer-token flows to work for the seeded user
-- the generated SQL is idempotent and safe to re-apply
-- generated seed output under `infra/supabase/seeds/generated/` is ignored by Git
+Use a real Supabase auth user UUID if you want bearer-token flows to work. Generated seed output under `infra/supabase/seeds/generated/` is ignored by Git.
 
 Apply the rendered SQL after migrations:
 
 ```bash
-PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
+psql "$DATABASE_URL" -f infra/supabase/seeds/generated/minimal_tenant_bootstrap.sql
 ```
 
-Once applied, the live API can satisfy tenant-scoped report reads and `validate_journal_entry` calls instead of failing on empty tenant data.
+## Web Quickstart
 
-## Local Web Quickstart
+1. Copy the web env template:
 
-The first operator console lives in [apps/web](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\apps\web).
+```bash
+cp apps/web/.env.example apps/web/.env
+```
 
-1. Run `npm install`
-2. Run `npm run dev:web`
-3. Open the Vite URL shown in the terminal
-4. Paste:
-   - API base URL, for example `https://api.nexiuslabs.com`
-   - a valid Supabase bearer token
-   - an organization ID
-   - optionally a period ID
-
-The current console supports:
-- dashboard triage cards
-- proposal queue and proposal detail with linked draft inspection
-- approval queue and approval detail with approve, reject, and escalate controls
-- posted journal entry list/detail
-- reports for trial balance, balance sheet, profit and loss, and general ledger
-- schedule run generation, list/detail review, and tie-out state for ledger-derived balance sheet support schedules
-- entity audit timeline review
-
-The session bootstrap will prefill the API base URL from `VITE_DEFAULT_API_BASE_URL` when present. For the intended production deployment, use:
+2. Set the API base URL:
 
 ```text
-VITE_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
+VITE_DEFAULT_API_BASE_URL=http://localhost:3000
 ```
 
-## Operator Console VPS Deploy
+3. Start the operator console:
 
-The split-domain production target is:
+```bash
+npm run dev:web
+```
+
+4. Open the Vite URL and enter:
+
+- API base URL
+- Supabase bearer token
+- organization ID
+- optional period ID
+
+## API Surface
+
+Representative implemented endpoints:
+
+- `GET /api/v1/health`
+- `GET /api/v1/accounts`
+- `GET /api/v1/reports/trial-balance`
+- `GET /api/v1/reports/balance-sheet`
+- `GET /api/v1/reports/profit-and-loss`
+- `GET /api/v1/reports/general-ledger`
+- `GET /api/v1/schedules/definitions`
+- `POST /api/v1/schedules/definitions`
+- `GET /api/v1/schedules/runs`
+- `GET /api/v1/schedules/runs/:runId`
+- `POST /api/v1/schedules/runs`
+- `POST /api/v1/schedules/runs/:runId/review`
+- `GET /api/v1/agent-tools/schema`
+- `GET /api/v1/agent-tools/tool/:toolName`
+- `POST /api/v1/agent-tools/execute`
+- `POST /api/v1/agent-tools/execute-batch`
+
+## Deployment
+
+API-only Docker deployment:
+
+- `infra/docker/api-only/README.md`
+
+Split API and operator-console Docker deployment:
+
+- `infra/docker/operator-console/README.md`
+
+Netlify static web deployment:
+
+- `apps/web/netlify.toml`
+
+For the hosted Nexius Labs deployment, the production split is:
 
 ```text
-https://api.nexiuslabs.com
-https://accounting.nexiuslabs.com
+API: https://api.nexiuslabs.com
+Web: https://accounting.nexiuslabs.com
 ```
 
-Use the production stack under [infra/docker/operator-console](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\infra\docker\operator-console) to deploy both services behind one Caddy instance.
+Self-hosters should replace those domains with their own and avoid committing real secrets.
 
-Recommended values:
+## OpenClaw Relationship
 
-```text
-API_DOMAIN=api.nexiuslabs.com
-WEB_DOMAIN=accounting.nexiuslabs.com
-WEB_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
-TLS_EMAIL=agent@nexiuslabs.com
-```
+OpenClaw is planned as the agent orchestration shell, not the accounting source of truth.
 
-## Operator Console Netlify Deploy
+This repository owns the accounting backend, database schema, approval logic, audit trail, operator console, and future plugin/package surface. OpenClaw integration is documented in:
 
-`apps/web` can also be deployed separately on Netlify while keeping the API on the VPS.
+- `devplan/openclaw_integration_01.md`
+- `devplan/openclaw_distribution_hardening_01.md`
 
-- Netlify config lives at [apps/web/netlify.toml](C:\Users\wdqia\Nexius%20Labs%20\Nexius%20Dev%20Team%20-%20Darryl%20Dev\agentic-accounting\apps\web\netlify.toml)
-- publish target: `dist`
-- build command: `npm install && npm run build`
+## Documentation
 
-Recommended production environment variable:
+Start here:
 
-```text
-VITE_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
-```
+- `devplan/masterPRD.md`
+- `devplan/featurePRD_01.md`
+- `devplan/architecture_summary_01.md`
+- `devplan/api_spec_v1_01.md`
+- `devplan/reporting_design_01.md`
+- `devplan/schedule_engine_01.md`
+- `devplan/bootstrap_ux_01.md`
 
-## Status Notes
+Release and project docs:
 
-The documentation inventory is intentionally kept up to date in `devplan/`. When the implementation catches up, the repo can move from planning-first to runtime-first without changing the architecture.
+- `CONTRIBUTING.md`
+- `GOVERNANCE.md`
+- `ROADMAP.md`
+- `SECURITY.md`
+- `LICENSE`
+
+## Security
+
+Do not open public issues for suspected vulnerabilities. See `SECURITY.md` for reporting instructions and supported scope.
+
+## License
+
+This project is licensed under the terms in `LICENSE`.
