@@ -126,6 +126,23 @@ async function fetchApi<TResult>(session: Session, apiPath: string, params: Reco
   return parseApiResponse<TResult>(response);
 }
 
+async function postApi<TInput extends object, TResult>(session: Session, apiPath: string, input: TInput) {
+  const response = await fetch(path(session.apiBaseUrl, apiPath), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.bearerToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new OperatorApiError('HTTP_ERROR', `API request failed with status ${response.status}.`);
+  }
+
+  return parseApiResponse<TResult>(response);
+}
+
 export async function fetchToolSchema(session: Session) {
   const response = await fetch(path(session.apiBaseUrl, '/api/v1/agent-tools/schema'), {
     headers: {
@@ -679,4 +696,20 @@ export async function getScheduleRun(session: Session, scheduleRunId: string): P
       metadata: (row.metadata ?? null) as Record<string, unknown> | null
     }))
   };
+}
+
+export async function generateScheduleRun(
+  session: Session,
+  input: { scheduleType: string; asOfDate: string }
+): Promise<ScheduleRunSummary> {
+  const result = await postApi<
+    { organization_id: string; schedule_type: string; as_of_date: string },
+    Record<string, unknown>
+  >(session, '/api/v1/schedules/runs', {
+    organization_id: session.organizationId,
+    schedule_type: input.scheduleType,
+    as_of_date: input.asOfDate
+  });
+
+  return scheduleRunSummary(result);
 }

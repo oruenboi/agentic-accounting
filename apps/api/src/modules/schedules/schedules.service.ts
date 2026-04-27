@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 import { TenantAccessService } from '../auth/tenant-access.service';
 import { DatabaseService } from '../database/database.service';
-import type { GetScheduleRunQueryDto, ListScheduleRunsQueryDto } from './dto/schedule-query.dto';
+import type { GenerateScheduleRunDto, GetScheduleRunQueryDto, ListScheduleRunsQueryDto } from './dto/schedule-query.dto';
 
 @Injectable()
 export class SchedulesService {
@@ -145,5 +145,288 @@ export class SchedulesService {
       actor_context: actorContext,
       rows: rowsResult.rows
     };
+  }
+
+  async generateScheduleRun(input: GenerateScheduleRunDto, actor: AuthenticatedActor) {
+    if (input.schedule_definition_id === undefined && input.schedule_type === undefined) {
+      throw new BadRequestException('Either schedule_definition_id or schedule_type is required.');
+    }
+
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const generatedByActorId = actor.actorType === 'user' ? actorContext.appUserId : actor.clientId ?? actor.authUserId;
+
+    return this.databaseService.withTransaction(async (client) => {
+      const definitionResult = await client.query<{
+        schedule_definition_id: string;
+        firm_id: string;
+        organization_id: string | null;
+        schedule_type: string;
+        schedule_name: string;
+        gl_account_ids: string[];
+        generation_strategy: string;
+        group_by: string | null;
+      }>(
+        `
+          select
+            sd.id::text as schedule_definition_id,
+            sd.firm_id::text,
+            sd.organization_id::text,
+            sd.schedule_type,
+            sd.name as schedule_name,
+            sd.gl_account_ids::text[] as gl_account_ids,
+            sd.generation_strategy,
+            sd.group_by
+          from public.schedule_definitions sd
+          where sd.firm_id = $1::uuid
+            and sd.is_active = true
+            and ($2::uuid is null or sd.id = $2::uuid)
+            and ($3::text is null or sd.schedule_type = $3::text)
+            and (sd.organization_id = $4::uuid or sd.organization_id is null)
+          order by sd.organization_id nulls last, sd.created_at desc
+          limit 1
+        `,
+        [actorContext.firmId, input.schedule_definition_id ?? null, input.schedule_type ?? null, input.organization_id]
+      );
+
+      const definition = definitionResult.rows[0];
+
+      if (definition === undefined) {
+        throw new NotFoundException('No active schedule definition matched the requested schedule.');
+      }
+
+      if (definition.generation_strategy !== 'ledger_derived') {
+        throw new BadRequestException(
+          `Schedule definition ${definition.schedule_definition_id} uses ${definition.generation_strategy}, but only ledger_derived generation is currently implemented.`
+        );
+      }
+
+      const priorRunResult = await client.query<{ schedule_run_id: string }>(
+        `
+          select id::text as schedule_run_id
+          from public.schedule_runs
+          where organization_id = $1::uuid
+            and schedule_definition_id = $2::uuid
+            and as_of_date = $3::date
+            and status <> 'superseded'
+          order by generated_at desc
+          limit 1
+        `,
+        [input.organization_id, definition.schedule_definition_id, input.as_of_date]
+      );
+      const supersedesScheduleRunId = priorRunResult.rows[0]?.schedule_run_id ?? null;
+
+      const balanceResult = await client.query<{
+        account_id: string;
+        account_code: string;
+        account_name: string;
+        account_type: string;
+        account_subtype: string | null;
+        net_balance: string;
+      }>(
+        `
+          select
+            tb.account_id::text,
+            tb.account_code,
+            tb.account_name,
+            tb.account_type,
+            tb.account_subtype,
+            tb.net_balance::text
+          from public.fn_trial_balance($1::uuid, $2::date, true) tb
+          where tb.account_id = any($3::uuid[])
+          order by tb.account_code, tb.account_name
+        `,
+        [input.organization_id, input.as_of_date, definition.gl_account_ids]
+      );
+
+      const scheduleTotal = balanceResult.rows.reduce((total, row) => total + Number(row.net_balance), 0);
+      const glBalance = scheduleTotal;
+      const variance = glBalance - scheduleTotal;
+      const runStatus = variance === 0 ? 'reconciled' : 'variance_detected';
+
+      if (supersedesScheduleRunId !== null) {
+        await client.query(
+          `
+            update public.schedule_runs
+            set status = 'superseded', updated_at = now()
+            where id = $1::uuid
+          `,
+          [supersedesScheduleRunId]
+        );
+      }
+
+      const runInsert = await client.query<{ schedule_run_id: string }>(
+        `
+          insert into public.schedule_runs (
+            firm_id,
+            organization_id,
+            schedule_definition_id,
+            supersedes_schedule_run_id,
+            schedule_type,
+            as_of_date,
+            status,
+            gl_balance,
+            schedule_total,
+            variance,
+            generated_by_actor_type,
+            generated_by_actor_id,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4::uuid,
+            $5,
+            $6::date,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13::jsonb
+          )
+          returning id::text as schedule_run_id
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          definition.schedule_definition_id,
+          supersedesScheduleRunId,
+          definition.schedule_type,
+          input.as_of_date,
+          runStatus,
+          glBalance,
+          scheduleTotal,
+          variance,
+          actor.actorType,
+          generatedByActorId,
+          JSON.stringify({
+            generation_strategy: definition.generation_strategy,
+            generated_from: 'fn_trial_balance'
+          })
+        ]
+      );
+
+      const scheduleRunId = runInsert.rows[0]?.schedule_run_id;
+
+      if (scheduleRunId === undefined) {
+        throw new BadRequestException('Failed to create schedule run.');
+      }
+
+      for (const [index, row] of balanceResult.rows.entries()) {
+        await client.query(
+          `
+            insert into public.schedule_run_rows (
+              schedule_run_id,
+              row_order,
+              reference_type,
+              reference_id,
+              reference_number,
+              counterparty_name,
+              document_date,
+              opening_amount,
+              movement_amount,
+              closing_amount,
+              metadata
+            )
+            values (
+              $1::uuid,
+              $2,
+              'gl_account',
+              $3,
+              $4,
+              $5,
+              $6::date,
+              0,
+              $7,
+              $7,
+              $8::jsonb
+            )
+          `,
+          [
+            scheduleRunId,
+            index + 1,
+            row.account_id,
+            row.account_code,
+            row.account_name,
+            input.as_of_date,
+            Number(row.net_balance),
+            JSON.stringify({
+              account_type: row.account_type,
+              account_subtype: row.account_subtype
+            })
+          ]
+        );
+      }
+
+      await client.query(
+        `
+          insert into public.schedule_reconciliations (
+            schedule_run_id,
+            firm_id,
+            organization_id,
+            gl_balance,
+            schedule_total,
+            variance,
+            status,
+            metadata
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8::jsonb
+          )
+        `,
+        [
+          scheduleRunId,
+          actorContext.firmId,
+          input.organization_id,
+          glBalance,
+          scheduleTotal,
+          variance,
+          variance === 0 ? 'unreviewed' : 'variance_detected',
+          JSON.stringify({
+            schedule_definition_id: definition.schedule_definition_id
+          })
+        ]
+      );
+
+      return {
+        schedule_run_id: scheduleRunId,
+        organization_id: input.organization_id,
+        schedule_definition_id: definition.schedule_definition_id,
+        schedule_name: definition.schedule_name,
+        schedule_type: definition.schedule_type,
+        as_of_date: input.as_of_date,
+        status: runStatus,
+        gl_balance: glBalance,
+        schedule_total: scheduleTotal,
+        variance,
+        reconciliation_status: variance === 0 ? 'unreviewed' : 'variance_detected',
+        supersedes_schedule_run_id: supersedesScheduleRunId,
+        actor_context: actorContext,
+        rows: balanceResult.rows.map((row, index) => ({
+          row_order: index + 1,
+          reference_type: 'gl_account',
+          reference_id: row.account_id,
+          reference_number: row.account_code,
+          counterparty_name: row.account_name,
+          document_date: input.as_of_date,
+          opening_amount: '0.00',
+          movement_amount: row.net_balance,
+          closing_amount: row.net_balance,
+          metadata: {
+            account_type: row.account_type,
+            account_subtype: row.account_subtype
+          }
+        }))
+      };
+    });
   }
 }

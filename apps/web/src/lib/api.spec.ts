@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeTool, getScheduleRun, getTrialBalanceReport, listScheduleRuns, OperatorApiError } from './api';
+import { executeTool, generateScheduleRun, getScheduleRun, getTrialBalanceReport, listScheduleRuns, OperatorApiError } from './api';
 import type { OperatorSession } from './session';
 
 const session: OperatorSession = {
@@ -203,5 +203,51 @@ describe('schedule helpers', () => {
         rows: [expect.objectContaining({ scheduleRunRowId: 'row-1', closingAmount: '95.00' })]
       })
     );
+  });
+
+  it('generates a schedule run through the schedules API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-6',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          schedule_run_id: 'run-1',
+          organization_id: 'org-1',
+          schedule_definition_id: 'definition-1',
+          schedule_name: 'Accruals',
+          schedule_type: 'accruals',
+          as_of_date: '2026-04-30',
+          status: 'reconciled',
+          gl_balance: '-250.00',
+          schedule_total: '-250.00',
+          variance: '0.00'
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateScheduleRun(session, { scheduleType: 'accruals', asOfDate: '2026-04-30' })).resolves.toEqual(
+      expect.objectContaining({
+        scheduleRunId: 'run-1',
+        scheduleType: 'accruals',
+        status: 'reconciled'
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/schedules/runs', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        schedule_type: 'accruals',
+        as_of_date: '2026-04-30'
+      })
+    });
   });
 });

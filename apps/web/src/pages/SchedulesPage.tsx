@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { listScheduleRuns } from '../lib/api';
+import { generateScheduleRun, listScheduleRuns } from '../lib/api';
 import { formatCurrency, formatDateTime } from '../lib/format';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Field, Select, TextInput } from '../components/ui/Field';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
 import { Table, TableCell, TableRow } from '../components/ui/Table';
@@ -44,7 +45,10 @@ export function SchedulesPage() {
   const { session } = useOperatorSession();
   const [scheduleType, setScheduleType] = useState('all');
   const [status, setStatus] = useState('all');
-  const [asOfDate, setAsOfDate] = useState('');
+  const [asOfDate, setAsOfDate] = useState(today());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const { data, loading, error } = useAsyncData(
     () =>
@@ -54,8 +58,27 @@ export function SchedulesPage() {
         asOfDate: asOfDate === '' ? undefined : asOfDate,
         limit: 50
       }),
-    [asOfDate, scheduleType, session, status]
+    [asOfDate, refreshKey, scheduleType, session, status]
   );
+
+  async function handleGenerate() {
+    if (scheduleType === 'all' || asOfDate === '') {
+      setGenerationError('Choose a specific schedule type and as-of date before generating.');
+      return;
+    }
+
+    setGenerating(true);
+    setGenerationError(null);
+
+    try {
+      await generateScheduleRun(session!, { scheduleType, asOfDate });
+      setRefreshKey((value) => value + 1);
+    } catch (cause) {
+      setGenerationError(cause instanceof Error ? cause.message : 'Schedule generation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -67,7 +90,7 @@ export function SchedulesPage() {
             Review generated schedule runs, tie-out status, and variance state for the active organization.
           </p>
         </div>
-        <div className="grid gap-3 md:grid-cols-3 xl:min-w-[720px]">
+        <div className="grid gap-3 md:grid-cols-4 xl:min-w-[820px]">
           <Field label="Type">
             <Select value={scheduleType} onChange={(event) => setScheduleType(event.target.value)}>
               {scheduleTypes.map(([value, label]) => (
@@ -89,11 +112,17 @@ export function SchedulesPage() {
           <Field label="As of date" hint="Optional exact date filter">
             <TextInput type="date" value={asOfDate} max={today()} onChange={(event) => setAsOfDate(event.target.value)} />
           </Field>
+          <div className="flex items-end">
+            <Button className="w-full" onClick={handleGenerate} disabled={generating || scheduleType === 'all' || asOfDate === ''}>
+              {generating ? 'Generating…' : 'Generate'}
+            </Button>
+          </div>
         </div>
       </div>
 
       {loading ? <LoadingState label="Loading schedule runs…" /> : null}
       {error !== null ? <ErrorState title="Schedule list failed" body={error} /> : null}
+      {generationError !== null ? <ErrorState title="Schedule generation failed" body={generationError} /> : null}
       {!loading && error === null && data !== null && data.length === 0 ? (
         <EmptyState title="No schedule runs" body="Generate balance sheet schedules first, then return here to review tie-outs and variances." />
       ) : null}

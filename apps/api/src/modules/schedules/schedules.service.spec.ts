@@ -132,4 +132,76 @@ describe('SchedulesService', () => {
       service.getScheduleRun('660e8400-e29b-41d4-a716-446655440000', { organization_id: '550e8400-e29b-41d4-a716-446655440000' }, actor)
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('generates a ledger-derived schedule run', async () => {
+    const transactionClient = {
+      query: jest.fn()
+    };
+
+    (databaseService as unknown as { withTransaction: jest.Mock }).withTransaction = jest.fn(async (callback) => callback(transactionClient));
+
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            schedule_definition_id: 'definition-1',
+            firm_id: 'firm-1',
+            organization_id: 'org-1',
+            schedule_type: 'accruals',
+            schedule_name: 'Accruals',
+            gl_account_ids: ['account-1'],
+            generation_strategy: 'ledger_derived',
+            group_by: null
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: 'account-1',
+            account_code: '2100',
+            account_name: 'Accrued expenses',
+            account_type: 'liability',
+            account_subtype: 'accruals',
+            net_balance: '-250.00'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ schedule_run_id: 'run-1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      service.generateScheduleRun(
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          schedule_type: 'accruals',
+          as_of_date: '2026-04-30'
+        },
+        actor
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        schedule_run_id: 'run-1',
+        schedule_definition_id: 'definition-1',
+        schedule_type: 'accruals',
+        as_of_date: '2026-04-30',
+        gl_balance: -250,
+        schedule_total: -250,
+        variance: 0,
+        rows: [
+          expect.objectContaining({
+            reference_type: 'gl_account',
+            reference_id: 'account-1',
+            closing_amount: '-250.00'
+          })
+        ]
+      })
+    );
+
+    expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.schedule_runs'), expect.any(Array));
+    expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.schedule_run_rows'), expect.any(Array));
+    expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.schedule_reconciliations'), expect.any(Array));
+  });
 });

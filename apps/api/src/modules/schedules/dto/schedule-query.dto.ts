@@ -40,3 +40,16 @@ export class ListScheduleRunsQueryDto extends BaseScheduleQueryDto {
 }
 
 export class GetScheduleRunQueryDto extends BaseScheduleQueryDto {}
+
+export class GenerateScheduleRunDto extends BaseScheduleQueryDto {
+  @IsOptional()
+  @IsUUID()
+  schedule_definition_id?: string;
+
+  @IsOptional()
+  @IsIn(scheduleTypes)
+  schedule_type?: string;
+
+  @IsDateString()
+  as_of_date!: string;
+}

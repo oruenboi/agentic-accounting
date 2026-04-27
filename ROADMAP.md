@@ -8,7 +8,7 @@ The current phase is:
 - documentation and planning complete for the core architecture
 - schema and control model largely specified
 - first backend and operator-console workflow slices implemented
-- implementation work still pending for workers, schedules, broader UI coverage, OpenClaw plugin packaging, and operational automation
+- implementation work still pending for workers, advanced schedule strategies, broader UI coverage, OpenClaw plugin packaging, and operational automation
 - release-facing docs prepared for OSS and self-hosted usage
 
 The design center is an accounting control plane for firms, not a generic SMB bookkeeping app.
@@ -37,13 +37,13 @@ The first runtime slice now includes:
 - deterministic minimal tenant seed rendering
 - React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines
 - React operator console report views for trial balance, balance sheet, profit and loss, and general ledger
-- read-only schedule run API and operator console review screens for persisted balance sheet support schedules
+- schedule run API and operator console screens for generating and reviewing ledger-derived balance sheet support schedules
 - API-only VPS deployment assets, operator-console VPS deployment assets, and Netlify static web deployment config
 
 ## What Is Still Implementation-Pending
 
 The main implementation gaps are:
-- schedule schema and generation runtime
+- advanced schedule generation strategies beyond the current ledger-derived path
 - worker/background execution
 - broader operator UI for close, settings, and tasks
 - OpenClaw plugin package and host integration
@@ -55,7 +55,7 @@ Some lower-level foundations for these areas already exist, but the end-to-end p
 ## Near-Term Milestones
 
 1. Expand operator UI coverage for close, settings, and tasks.
-2. Implement schedule generation and reconciliation runtime beyond the current read-only schedule review surface.
+2. Expand schedule generation beyond the current ledger-derived path into subledger, register, and hybrid bank strategies.
 3. Add worker/background execution for exports, schedules, close support, and maintenance jobs.
 4. Package the SDK, schemas, domain helpers, and OpenClaw plugin.
 5. Implement the planned one-click bootstrap UX.
