@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getScheduleRun } from '../lib/api';
+import { getScheduleRun, reviewScheduleRun } from '../lib/api';
 import { formatCurrency, formatDateTime } from '../lib/format';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { DetailList } from '../components/DetailList';
+import { Field, TextArea } from '../components/ui/Field';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
 import { Table, TableCell, TableRow } from '../components/ui/Table';
 import { useAsyncData } from './useAsyncData';
@@ -23,7 +26,11 @@ function titleCase(value: string | null | undefined) {
 export function ScheduleRunDetailPage() {
   const { session } = useOperatorSession();
   const { runId } = useParams();
-  const { data, loading, error } = useAsyncData(() => getScheduleRun(session!, runId!), [runId, session]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const { data, loading, error } = useAsyncData(() => getScheduleRun(session!, runId!), [refreshKey, runId, session]);
 
   if (loading) {
     return <LoadingState label="Loading schedule run…" />;
@@ -35,6 +42,27 @@ export function ScheduleRunDetailPage() {
 
   if (data === null) {
     return <EmptyState title="Schedule run not found" body="The backend did not return this schedule run." />;
+  }
+
+  const variance = Number(data.variance);
+  const alreadyReviewed = data.reconciliationStatus === 'reconciled' || data.reconciliationStatus === 'approved_with_variance';
+
+  async function handleReview(resolution: 'reconciled' | 'approved_with_variance') {
+    setReviewing(true);
+    setReviewError(null);
+
+    try {
+      await reviewScheduleRun(session!, runId!, {
+        resolution,
+        notes: reviewNotes.trim() === '' ? undefined : reviewNotes
+      });
+      setReviewNotes('');
+      setRefreshKey((value) => value + 1);
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'Schedule review failed.');
+    } finally {
+      setReviewing(false);
+    }
   }
 
   return (
@@ -88,6 +116,41 @@ export function ScheduleRunDetailPage() {
               { label: 'Mapped GL accounts', value: data.glAccountIds.length === 0 ? 'None' : data.glAccountIds.join(', ') }
             ]}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Review</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <DetailList
+            items={[
+              { label: 'Reconciliation status', value: titleCase(data.reconciliationStatus) },
+              { label: 'Reviewed at', value: data.reconciliationReviewedAt ? formatDateTime(data.reconciliationReviewedAt) : 'Not reviewed' },
+              { label: 'Reviewed by', value: data.reconciliationReviewedByUserId ?? 'Not reviewed' },
+              { label: 'Review notes', value: data.reconciliationNotes ?? 'None' }
+            ]}
+          />
+          {reviewError !== null ? <ErrorState title="Schedule review failed" body={reviewError} /> : null}
+          {!alreadyReviewed ? (
+            <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+              <Field label="Review notes" hint={variance === 0 ? 'Optional for zero-variance schedules.' : 'Required when approving a variance.'}>
+                <TextArea value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} placeholder="Review conclusion" />
+              </Field>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {variance === 0 ? (
+                  <Button onClick={() => handleReview('reconciled')} disabled={reviewing}>
+                    {reviewing ? 'Reviewing…' : 'Mark reconciled'}
+                  </Button>
+                ) : (
+                  <Button onClick={() => handleReview('approved_with_variance')} disabled={reviewing}>
+                    {reviewing ? 'Reviewing…' : 'Approve variance'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

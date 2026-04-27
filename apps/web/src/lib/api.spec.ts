@@ -8,7 +8,8 @@ import {
   listAccounts,
   listScheduleDefinitions,
   listScheduleRuns,
-  OperatorApiError
+  OperatorApiError,
+  reviewScheduleRun
 } from './api';
 import type { OperatorSession } from './session';
 
@@ -400,6 +401,51 @@ describe('schedule helpers', () => {
         organization_id: 'org-1',
         schedule_type: 'accruals',
         as_of_date: '2026-04-30'
+      })
+    });
+  });
+
+  it('reviews a schedule run through the schedules API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-10',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          schedule_run_id: 'run-1',
+          organization_id: 'org-1',
+          schedule_definition_id: 'definition-1',
+          schedule_type: 'bank',
+          as_of_date: '2026-04-30',
+          status: 'reviewed',
+          gl_balance: '100.00',
+          schedule_total: '100.00',
+          variance: '0.00',
+          reconciliation_status: 'reconciled'
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(reviewScheduleRun(session, 'run-1', { resolution: 'reconciled' })).resolves.toEqual(
+      expect.objectContaining({
+        scheduleRunId: 'run-1',
+        status: 'reviewed',
+        reconciliationStatus: 'reconciled'
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/schedules/runs/run-1/review', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        resolution: 'reconciled'
       })
     });
   });

@@ -8,7 +8,8 @@ import {
   GenerateScheduleRunDto,
   GetScheduleRunQueryDto,
   ListScheduleDefinitionsQueryDto,
-  ListScheduleRunsQueryDto
+  ListScheduleRunsQueryDto,
+  ReviewScheduleRunDto
 } from './dto/schedule-query.dto';
 import { SchedulesService } from './schedules.service';
 
@@ -65,6 +66,17 @@ export class SchedulesController {
     @Req() request: AuthenticatedRequest
   ) {
     const result = await this.schedulesService.generateScheduleRun(body, actor);
+    return buildApiResponse(request, result);
+  }
+
+  @Post('runs/:runId/review')
+  async reviewRun(
+    @Param('runId') runId: string,
+    @Body() body: ReviewScheduleRunDto,
+    @CurrentActor() actor: AuthenticatedActor,
+    @Req() request: AuthenticatedRequest
+  ) {
+    const result = await this.schedulesService.reviewScheduleRun(runId, body, actor);
     return buildApiResponse(request, result);
   }
 }

@@ -12,6 +12,7 @@ const scheduleTypes = [
 ] as const;
 
 const scheduleRunStatuses = ['generated', 'variance_detected', 'reconciled', 'reviewed', 'superseded'] as const;
+const scheduleReviewResolutions = ['reconciled', 'approved_with_variance'] as const;
 
 export class BaseScheduleQueryDto {
   @IsUUID()
@@ -93,4 +94,14 @@ export class CreateScheduleDefinitionDto extends BaseScheduleQueryDto {
   @IsString()
   @IsNotEmpty()
   group_by?: string;
+}
+
+export class ReviewScheduleRunDto extends BaseScheduleQueryDto {
+  @IsIn(scheduleReviewResolutions)
+  resolution!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  notes?: string;
 }

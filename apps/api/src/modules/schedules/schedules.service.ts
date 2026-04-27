@@ -7,7 +7,8 @@ import type {
   GenerateScheduleRunDto,
   GetScheduleRunQueryDto,
   ListScheduleDefinitionsQueryDto,
-  ListScheduleRunsQueryDto
+  ListScheduleRunsQueryDto,
+  ReviewScheduleRunDto
 } from './dto/schedule-query.dto';
 
 @Injectable()
@@ -577,6 +578,180 @@ export class SchedulesService {
             account_subtype: row.account_subtype
           }
         }))
+      };
+    });
+  }
+
+  async reviewScheduleRun(scheduleRunId: string, input: ReviewScheduleRunDto, actor: AuthenticatedActor) {
+    const actorContext = await this.tenantAccessService.assertOrganizationAccess(actor, input.organization_id);
+    const reviewedByUserId = actor.actorType === 'user' ? actorContext.appUserId : null;
+
+    if (reviewedByUserId === null) {
+      throw new BadRequestException('Only authenticated users can review schedule runs.');
+    }
+
+    const notes = input.notes?.trim() || null;
+
+    if (input.resolution === 'approved_with_variance' && notes === null) {
+      throw new BadRequestException('Notes are required when approving a schedule with variance.');
+    }
+
+    return this.databaseService.withTransaction(async (client) => {
+      const runResult = await client.query<{
+        schedule_run_id: string;
+        organization_id: string;
+        schedule_definition_id: string;
+        schedule_type: string;
+        as_of_date: string;
+        status: string;
+        gl_balance: string;
+        schedule_total: string;
+        variance: string;
+        reconciliation_id: string;
+        reconciliation_status: string;
+      }>(
+        `
+          select
+            sr.id::text as schedule_run_id,
+            sr.organization_id::text,
+            sr.schedule_definition_id::text,
+            sr.schedule_type,
+            sr.as_of_date::text,
+            sr.status,
+            sr.gl_balance::text,
+            sr.schedule_total::text,
+            sr.variance::text,
+            rec.id::text as reconciliation_id,
+            rec.status as reconciliation_status
+          from public.schedule_runs sr
+          join public.schedule_reconciliations rec
+            on rec.schedule_run_id = sr.id
+          where sr.id = $1::uuid
+            and sr.organization_id = $2::uuid
+            and sr.firm_id = $3::uuid
+          limit 1
+        `,
+        [scheduleRunId, input.organization_id, actorContext.firmId]
+      );
+
+      const run = runResult.rows[0];
+
+      if (run === undefined) {
+        throw new NotFoundException('Schedule run was not found for the requested organization.');
+      }
+
+      const variance = Number(run.variance);
+
+      if (input.resolution === 'reconciled' && variance !== 0) {
+        throw new BadRequestException('Only zero-variance schedules can be marked reconciled.');
+      }
+
+      if (input.resolution === 'approved_with_variance' && variance === 0) {
+        throw new BadRequestException('Use reconciled for zero-variance schedules.');
+      }
+
+      const reconciliationResult = await client.query(
+        `
+          update public.schedule_reconciliations
+          set
+            status = $1,
+            reviewed_by_user_id = $2::uuid,
+            reviewed_at = now(),
+            notes = $3,
+            updated_at = now()
+          where id = $4::uuid
+          returning
+            id::text as reconciliation_id,
+            status as reconciliation_status,
+            reviewed_at as reconciliation_reviewed_at,
+            reviewed_by_user_id::text as reconciliation_reviewed_by_user_id,
+            notes as reconciliation_notes
+        `,
+        [input.resolution, reviewedByUserId, notes, run.reconciliation_id]
+      );
+
+      await client.query(
+        `
+          update public.schedule_runs
+          set
+            status = 'reviewed',
+            reviewed_by_user_id = $1::uuid,
+            reviewed_at = now(),
+            updated_at = now()
+          where id = $2::uuid
+        `,
+        [reviewedByUserId, scheduleRunId]
+      );
+
+      await client.query(
+        `
+          insert into public.audit_logs (
+            firm_id,
+            organization_id,
+            event_name,
+            actor_type,
+            actor_id,
+            user_id,
+            entity_type,
+            entity_id,
+            action_status,
+            before_state,
+            after_state,
+            metadata,
+            source_channel,
+            source_route
+          )
+          values (
+            $1::uuid,
+            $2::uuid,
+            'schedule.reviewed',
+            $3,
+            $4,
+            $5::uuid,
+            'schedule_run',
+            $6,
+            'succeeded',
+            $7::jsonb,
+            $8::jsonb,
+            $9::jsonb,
+            'api',
+            $10
+          )
+        `,
+        [
+          actorContext.firmId,
+          input.organization_id,
+          actor.actorType,
+          reviewedByUserId,
+          reviewedByUserId,
+          scheduleRunId,
+          JSON.stringify({
+            schedule_run_status: run.status,
+            reconciliation_status: run.reconciliation_status,
+            reviewed_by_user_id: null
+          }),
+          JSON.stringify({
+            schedule_run_status: 'reviewed',
+            reconciliation_status: input.resolution,
+            reviewed_by_user_id: reviewedByUserId,
+            notes
+          }),
+          JSON.stringify({
+            schedule_definition_id: run.schedule_definition_id,
+            schedule_type: run.schedule_type,
+            as_of_date: run.as_of_date,
+            variance: run.variance
+          }),
+          `/api/v1/schedules/runs/${scheduleRunId}/review`
+        ]
+      );
+
+      return {
+        ...run,
+        status: 'reviewed',
+        ...reconciliationResult.rows[0],
+        reviewed_by_user_id: reviewedByUserId,
+        actor_context: actorContext
       };
     });
   }

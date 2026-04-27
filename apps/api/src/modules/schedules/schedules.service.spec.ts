@@ -333,4 +333,84 @@ describe('SchedulesService', () => {
     expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.schedule_run_rows'), expect.any(Array));
     expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.schedule_reconciliations'), expect.any(Array));
   });
+
+  it('marks a zero-variance schedule run reconciled', async () => {
+    const transactionClient = {
+      query: jest.fn()
+    };
+
+    (databaseService as unknown as { withTransaction: jest.Mock }).withTransaction = jest.fn(async (callback) => callback(transactionClient));
+
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            schedule_run_id: 'run-1',
+            organization_id: 'org-1',
+            schedule_definition_id: 'definition-1',
+            schedule_type: 'bank',
+            as_of_date: '2026-04-30',
+            status: 'reconciled',
+            gl_balance: '100.00',
+            schedule_total: '100.00',
+            variance: '0.00',
+            reconciliation_id: 'reconciliation-1'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            reconciliation_id: 'reconciliation-1',
+            reconciliation_status: 'reconciled',
+            reconciliation_reviewed_by_user_id: 'user-1',
+            reconciliation_notes: null
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      service.reviewScheduleRun(
+        '660e8400-e29b-41d4-a716-446655440000',
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          resolution: 'reconciled'
+        },
+        actor
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        schedule_run_id: 'run-1',
+        status: 'reviewed',
+        reconciliation_status: 'reconciled',
+        reviewed_by_user_id: 'user-1',
+        actor_context: actorContext
+      })
+    );
+
+    expect(transactionClient.query).toHaveBeenNthCalledWith(2, expect.stringContaining('update public.schedule_reconciliations'), [
+      'reconciled',
+      'user-1',
+      null,
+      'reconciliation-1'
+    ]);
+    expect(transactionClient.query).toHaveBeenNthCalledWith(3, expect.stringContaining('update public.schedule_runs'), [
+      'user-1',
+      '660e8400-e29b-41d4-a716-446655440000'
+    ]);
+  });
+
+  it('requires notes when approving a variance', async () => {
+    await expect(
+      service.reviewScheduleRun(
+        '660e8400-e29b-41d4-a716-446655440000',
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          resolution: 'approved_with_variance'
+        },
+        actor
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

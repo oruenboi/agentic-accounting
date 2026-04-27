@@ -811,3 +811,20 @@ export async function generateScheduleRun(
 
   return scheduleRunSummary(result);
 }
+
+export async function reviewScheduleRun(
+  session: Session,
+  scheduleRunId: string,
+  input: { resolution: 'reconciled' | 'approved_with_variance'; notes?: string }
+): Promise<ScheduleRunSummary> {
+  const result = await postApi<
+    { organization_id: string; resolution: string; notes?: string },
+    Record<string, unknown>
+  >(session, `/api/v1/schedules/runs/${scheduleRunId}/review`, {
+    organization_id: session.organizationId,
+    resolution: input.resolution,
+    notes: input.notes
+  });
+
+  return scheduleRunSummary(result);
+}
