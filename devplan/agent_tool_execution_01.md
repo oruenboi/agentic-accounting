@@ -38,11 +38,11 @@ Suggested categories:
 - `workflow`
 
 ## Execution Endpoints
-Recommended endpoints:
-- `GET /agent-tools/v1/schema`
-- `GET /agent-tools/v1/tool/:toolName`
-- `POST /agent-tools/v1/execute`
-- `POST /agent-tools/v1/execute-batch`
+Implemented endpoints under the API v1 prefix:
+- `GET /api/v1/agent-tools/schema`
+- `GET /api/v1/agent-tools/tool/:toolName`
+- `POST /api/v1/agent-tools/execute`
+- `POST /api/v1/agent-tools/execute-batch`
 
 These should be thin wrappers over backend services, not business logic containers.
 
@@ -68,6 +68,16 @@ Write tools should require:
 - `idempotency_key`
 
 ## Authentication And Tenant Enforcement
+The current implementation supports two caller classes:
+
+- Supabase user bearer token via `Authorization: Bearer <token>`
+- configured agent client credentials via `x-agent-client-id` and `x-agent-client-secret`
+
+Agent-client calls may include:
+
+- `x-delegated-auth-user-id` for tenant-scoped delegated user context
+- `x-agent-run-id` for OpenClaw or agent-run correlation
+
 Execution flow:
 1. authenticate caller
 2. resolve actor context
@@ -85,6 +95,8 @@ The backend should normalize:
 - `agent_run_id`
 - `firm_id`
 - `organization_id`
+
+For the current bounded agent-client path, `x-delegated-auth-user-id` is required whenever a tenant-scoped tool needs to prove organization access through the delegated user. This keeps agent identity separate from tenant authorization while preserving a route for OpenClaw-run correlation.
 
 ## Approval Hooks
 For risky or material writes:
@@ -154,6 +166,23 @@ The backend should:
 - enforce approvals
 - store audit records
 - own idempotent execution
+
+## OpenClaw Readiness Position
+The first OpenClaw-ready backend model is now defined and partially implemented:
+
+- tool discovery is exposed through `GET /api/v1/agent-tools/schema`
+- single and batch execution are exposed through API endpoints
+- user and configured-agent auth paths share the same execution surface
+- tenant access remains enforced in backend services
+- mutating journal workflow tools use backend idempotency and approval state
+- `x-agent-run-id` gives the OpenClaw host a correlation hook without making OpenClaw the accounting source of truth
+
+Remaining OpenClaw-specific work:
+
+- package the OpenClaw plugin
+- pin a supported OpenClaw host version or companion-fork commit
+- add richer host-side tenant/session and approval metadata once the host strategy is validated
+- expand tool metadata if the plugin needs stricter safety declarations than the current registry exposes
 
 ## Batch Execution
 Batch execution should be supported, but each item remains independently valid.

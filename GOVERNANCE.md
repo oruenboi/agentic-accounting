@@ -68,7 +68,14 @@ The intended relationship is:
 - any required OpenClaw host changes should be documented as external dependencies or maintained in a companion fork/upstream patch set
 
 ### Preferred OpenClaw strategy
-The preferred long-term model is one of the following:
+For the initial OSS release, the project stance is:
+
+- ship the accounting backend, operator UI, docs, and OpenClaw plugin package from this repository
+- do not vendor the OpenClaw host into this repository
+- treat production-grade OpenClaw host changes as a companion fork or upstream patch set
+- publish a versioned compatibility statement once a concrete OpenClaw host version or companion-fork commit is validated
+
+The preferred long-term model remains one of the following:
 
 - a companion OpenClaw fork for host changes that are not yet upstreamed
 - upstream contributions to OpenClaw where the changes are broadly useful
@@ -86,19 +93,17 @@ Those controls belong in this repository's backend and database model.
 
 ## Licensing Guidance
 
-The project should publish a clear license before a broad public release.
+The repository is licensed under the Apache License 2.0. The `LICENSE` file is the source of truth for license terms.
 
-At the time this document was written, the final license choice is intentionally left open.
+### Compatibility guidance
+Contributors should:
 
-### Placeholder guidance
-Until a final legal decision is made:
+- confirm third-party code and dependency licenses are compatible before adding them
+- preserve required copyright, attribution, and NOTICE obligations
+- avoid promising dual-licensing, source-available, or commercial terms unless they are formally decided
 
-- do not assume a permissive license unless the repository explicitly states one
-- do not copy third-party code into the repository without confirming compatibility
-- do not promise dual-licensing, source-available, or commercial terms unless they are formally decided
-
-### What the eventual license must support
-The final license should be chosen with these goals in mind:
+### What the license is intended to support
+The license choice supports these goals:
 
 - enable public review of ledger and control logic
 - allow self-hosting if that remains the intended product shape
@@ -106,12 +111,13 @@ The final license should be chosen with these goals in mind:
 - remain compatible with any OpenClaw integration and its own licensing terms
 
 ### Legal note
-This document is not legal advice and does not select the final license.
-The repository should eventually include an explicit `LICENSE` file and, if needed, additional copyright or contributor notices.
+This document is not legal advice. If needed, additional copyright or contributor notices should be added alongside the `LICENSE` file.
 
 ## Security And Compliance-Sensitive Contributions
 
 This project handles accounting data and therefore has a higher-than-average control burden.
+
+Vulnerability reports should follow the private reporting process in `SECURITY.md`. Do not open public issues for suspected vulnerabilities.
 
 Contributions in the following areas require extra care:
 

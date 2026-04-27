@@ -7,7 +7,7 @@ last_reviewed: 2026-04-07
 # Self-Host Quickstart 01
 
 ## Purpose
-This quickstart describes how the planned accounting platform should be launched in a self-hosted environment. It is intentionally release-facing and reflects the documented architecture, not a finished implementation.
+This quickstart describes how the accounting platform should be launched in a self-hosted environment. It is release-facing and reflects both the documented architecture and the first implemented API/operator-console slices.
 
 Supabase is the default supported backend for this project. The recommended setup paths are:
 - hosted Supabase for the fastest OSS evaluation and deployment path
@@ -16,11 +16,14 @@ Supabase is the default supported backend for this project. The recommended setu
 Plain Postgres without the Supabase layer is not the primary support target.
 
 ## What You Get
-The self-hosted platform is planned as a monorepo with:
-- `apps/api` for the backend
-- `apps/web` for the internal UI
-- `apps/workers` for background jobs
+The self-hosted platform is a monorepo with:
+- `apps/api` for the current backend runtime
+- `apps/web` for the current operator console
 - `infra/supabase` for schema, RLS, and SQL objects
+- `infra/docker` for current API and operator-console deployment assets
+
+The planned broader platform also includes:
+- `apps/workers` for background jobs
 - `packages/sdk`, `packages/schemas`, `packages/domain`, and `packages/openclaw-plugin` for reusable integration pieces
 
 ## Prerequisites
@@ -251,11 +254,11 @@ You should additionally configure:
 OpenClaw is a host and orchestration layer, not the accounting source of truth.
 
 ## Current Limitations
-This quickstart reflects the planned platform, not a finished release.
+This quickstart reflects an early runtime release, not a finished full-platform release.
 
 Limitations to expect:
-- implementation work is still pending for most backend features beyond the initial read-only API
-- the repo currently documents many behaviors before the code exists
+- implementation work is still pending for workers, schedule generation runtime, broader UI coverage, and package publishing
+- some docs still describe target behaviors before the complete runtime exists
 - the exact full-platform startup commands and infrastructure scripts are not finalized
 - OpenClaw host changes may live in a companion fork or upstream branch
 - production hardening details will depend on the final deployment topology
@@ -297,3 +300,4 @@ Before broader rollout, verify:
 - [openclaw_distribution_hardening_01.md](./openclaw_distribution_hardening_01.md)
 - [operational_setup_01.md](./operational_setup_01.md)
 - [api_auth_client_model_01.md](./api_auth_client_model_01.md)
+- [bootstrap_ux_01.md](./bootstrap_ux_01.md)

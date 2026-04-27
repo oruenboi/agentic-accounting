@@ -48,6 +48,7 @@ Statuses:
 | Background job architecture | documented | `background_jobs_01.md` |
 | Close process | documented | `workflow_close_01.md` |
 | Audit read model | documented | `audit_read_model_01.md` |
+| Bootstrap UX | documented | `bootstrap_ux_01.md` |
 | Testing strategy in detail | documented | `testing_strategy_01.md` |
 | Operational setup | documented | `operational_setup_01.md` |
 | OpenClaw integration split | documented | `openclaw_integration_01.md` |
@@ -86,6 +87,7 @@ Remaining work is implementation-facing and/or release-polish oriented:
 - `openclaw_quickstart_01.md` now provides a release-facing OpenClaw integration quickstart.
 - `CONTRIBUTING.md` now provides contribution guidance for planning-first and implementation work.
 - `GOVERNANCE.md` now provides maintainership and licensing/governance guidance.
+- `SECURITY.md` now provides private vulnerability reporting and responsible disclosure guidance.
 - `ROADMAP.md` now provides a release-facing roadmap and lightweight changelog.
 - `webui_routes_01.md` now covers the Web UI page map and route structure.
 - `webui_components_01.md` now covers the Web UI component and interaction system.
@@ -95,6 +97,7 @@ Remaining work is implementation-facing and/or release-polish oriented:
 - `docs_publishing_model_01.md` now covers the source-of-truth and publishing workflow between `devplan/` and the future docs site.
 - `backend_processes_01.md` now covers synchronous, async, scheduled, maintenance, and agent-specific backend process classes.
 - `supabase_install_options_01.md` now covers hosted Supabase vs self-hosted Supabase, service expectations, environment values, and OSS support posture.
+- `bootstrap_ux_01.md` now covers the first one-click bootstrap plan for local, VPS, and optional OpenClaw setup.
 
 ## Notes
 - "Documented" means the repo has a stable written artifact that captures the topic well enough to guide implementation.

@@ -14,10 +14,10 @@ What is already defined:
 - release-facing README and quickstart docs
 
 What is still being implemented:
-- runtime API and services
-- agent/tool execution layer
-- reporting SQL and schedule execution
-- release hardening and operational rollout
+- broader runtime API services beyond the current journal, approval, audit, and reporting slices
+- schedule execution and worker processes
+- OpenClaw plugin package and host integration
+- release hardening, examples, and operational automation
 
 Contributions should assume the docs are authoritative until implementation work catches up.
 

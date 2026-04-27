@@ -64,7 +64,15 @@ For accounting use, OpenClaw should support:
 If those capabilities are not available upstream, use a companion fork or upstream the changes and pin to a supported host version.
 
 ## Recommended Host Strategy
-There are three realistic strategies:
+For the initial OSS release, use a companion-fork/upstream-support stance:
+
+- do not vendor the OpenClaw host into this repository
+- ship the accounting plugin and integration docs from this repository
+- use a companion fork when required host capabilities are not yet upstream
+- upstream broadly useful host changes where practical
+- pin a supported OpenClaw host version or companion-fork commit once validated
+
+There are three realistic implementation strategies:
 
 ### Option 1: Companion fork
 Maintain a separate OpenClaw fork for required host changes.
@@ -73,6 +81,8 @@ Use this when:
 - host changes are substantial
 - you want to control the release timing
 - you do not want to wait on upstream review
+
+This is the default initial OSS-release fallback when stock OpenClaw lacks required accounting controls.
 
 ### Option 2: Upstream contribution
 Contribute the needed changes back to OpenClaw and depend on an upstream release.
@@ -87,7 +97,7 @@ Avoid unless absolutely necessary.
 It makes maintenance and upgrades harder and is not the recommended default.
 
 ## Backend Prerequisites
-Before OpenClaw can safely perform accounting work, the backend should provide:
+Before OpenClaw can safely perform accounting work, the backend needs:
 - authenticated agent client handling
 - tenant validation
 - approval requests and approval actions
@@ -97,6 +107,8 @@ Before OpenClaw can safely perform accounting work, the backend should provide:
 - audit trails
 - user/agent flow endpoints
 - OpenClaw-friendly tool execution endpoints
+
+The current backend already provides a first bounded slice for configured agent clients, delegated user context, tenant-scoped tool execution, journal draft/proposal workflow, approvals, posting, reversals, reporting reads, and audit timelines. Schedule runtime and the packaged OpenClaw plugin remain future work.
 
 The backend remains the control plane for:
 - posting
@@ -193,7 +205,8 @@ Use approval-required actions for:
 ## Current Maturity
 The current state is:
 - architecture documented
-- backend planning largely complete
+- first backend workflow slice implemented
+- first operator-console slice implemented
 - plugin strategy defined
 - host changes identified at a requirements level
 - not yet ready for live autonomous accounting actions
@@ -208,9 +221,9 @@ Do not assume the following are production-ready yet:
 - fully durable agent-side approval storage
 - complete OpenClaw host patch set
 - production-hardening automation
-- fully implemented agent tool execution backend
-- full reporting SQL implementation
-- full schedule schema implementation
+- packaged OpenClaw plugin integration
+- full schedule runtime
+- broad operational runbooks and automated bootstrap
 
 Until those are implemented and verified:
 - keep mutations approval-gated

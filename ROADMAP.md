@@ -1,13 +1,14 @@
 # Agentic Accounting Roadmap
 
-This project is currently in a documentation-complete, implementation-pending phase. The architecture, control model, OpenClaw integration approach, and release shape are documented; the runtime product still needs implementation.
+This project is moving from a documentation-complete foundation into early runtime implementation. The architecture, control model, OpenClaw integration approach, and release shape are documented; the first API and operator-console slices now exist.
 
 ## Current Phase
 
 The current phase is:
 - documentation and planning complete for the core architecture
 - schema and control model largely specified
-- implementation work still pending for the backend, UI, and runtime integrations
+- first backend and operator-console workflow slices implemented
+- implementation work still pending for workers, schedules, broader UI coverage, OpenClaw plugin packaging, and operational automation
 - release-facing docs prepared for OSS and self-hosted usage
 
 The design center is an accounting control plane for firms, not a generic SMB bookkeeping app.
@@ -26,27 +27,38 @@ The following areas are now documented in the repo:
 - OpenClaw integration and hardening strategy
 - OSS packaging, self-hosting, and OpenClaw quickstarts
 
+## What Has Shipped In The First Runtime Slice
+
+The first runtime slice now includes:
+- NestJS API foundation with Supabase-backed auth and tenant checks
+- reporting endpoints for trial balance, balance sheet, profit and loss, and general ledger
+- agent-tool schema and execution endpoints
+- journal draft, proposal, approval, posting, reversal, audit-event, and timeline tools
+- deterministic minimal tenant seed rendering
+- React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines
+- API-only VPS deployment assets, operator-console VPS deployment assets, and Netlify static web deployment config
+
 ## What Is Still Implementation-Pending
 
 The main implementation gaps are:
-- `idempotency_keys` schema and runtime behavior
-- `agent_proposals` schema and runtime behavior
-- reporting SQL views and functions
 - schedule schema and generation runtime
-- agent tool execution/auth wiring
-- org-consistency and closed-period enforcement in write paths
+- worker/background execution
+- broader operator UI for reports, schedules, close, settings, and tasks
+- OpenClaw plugin package and host integration
+- one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup
+- production hardening and operational runbooks
 
-These are design-covered, but not yet built.
+Some lower-level foundations for these areas already exist, but the end-to-end product workflows are not complete.
 
 ## Near-Term Milestones
 
-1. Build the backend skeleton around the documented app-layer boundaries.
-2. Implement idempotency and proposal persistence.
-3. Implement reporting SQL for trial balance, balance sheet, P&L, and general ledger.
-4. Implement schedule generation and reconciliation state.
-5. Wire agent tool execution and OpenClaw-facing auth/context handling.
-6. Add the remaining enforcement paths for closed periods and tenant consistency.
-7. Build the internal operator UI on top of the documented APIs.
+1. Expand operator UI coverage for reporting, schedules, close, settings, and tasks.
+2. Implement schedule generation and reconciliation runtime.
+3. Add worker/background execution for exports, schedules, close support, and maintenance jobs.
+4. Package the SDK, schemas, domain helpers, and OpenClaw plugin.
+5. Implement the planned one-click bootstrap UX.
+6. Harden production deployment, backup, observability, and runbook guidance.
+7. Prove the OpenClaw integration against a pinned host strategy.
 
 ## Likely Launch Phases
 
@@ -80,7 +92,7 @@ Only after the OSS and self-hosted story is stable, consider a managed layer or 
 The public release model is expected to include:
 - a self-hostable monorepo
 - npm packages for SDK, schemas, domain logic, and OpenClaw integration
-- a documented OpenClaw companion/fork strategy
+- an OpenClaw plugin package, plus a documented companion-fork/upstream host strategy rather than a vendored OpenClaw host
 - deployment and hardening guidance
 
 The project is not being positioned as a single `npm install` accounting product.
@@ -92,6 +104,11 @@ The project is not being positioned as a single `npm install` accounting product
 - Added public-facing OSS release docs, including a root README, self-host quickstart, and OpenClaw quickstart.
 - Defined the OpenClaw boundary, including companion fork/upstream strategy and Ansible hardening scope.
 - Added implementation-facing specs for idempotency, agent proposals, reporting SQL, schedule schema, and agent tool execution.
+
+### 2026-04-23
+- Added the first API runtime slice for reporting, journal draft/proposal workflow, approvals, posting, reversals, audit reads, and agent-tool execution.
+- Added the first React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines.
+- Added API-only, split-domain operator-console, and Netlify deployment paths for the current runtime slices.
 
 ### Earlier planning phase
 - Established the product direction as an accounting control plane for firms.

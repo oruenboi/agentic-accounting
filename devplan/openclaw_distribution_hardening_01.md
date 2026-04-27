@@ -76,6 +76,23 @@ V1 recommendation:
 
 This keeps the accounting platform focused while still providing a complete integration story.
 
+## Initial OSS Release Stance
+For the initial OSS release, this repository should ship:
+- the accounting API, operator console, migrations, deployment examples, and release docs
+- the OpenClaw plugin package when implemented
+- compatibility notes describing the required OpenClaw host capabilities
+
+It should not ship:
+- a vendored OpenClaw host copy
+- hidden host patches inside accounting-platform code
+- a claim that stock OpenClaw is production-ready for accounting workflows before the required host capabilities are validated
+
+The initial public stance is companion-fork first, upstream-friendly second:
+- maintain or reference a companion OpenClaw fork if production host changes are needed before upstream accepts them
+- upstream broadly useful host changes where practical
+- pin a compatible OpenClaw host version or companion-fork commit in release notes once tested
+- keep backend approvals, ledger writes, tenant enforcement, and audit truth in this repository regardless of host strategy
+
 ## What Must Be Modified In OpenClaw
 The earlier integration analysis still applies. A production-grade accounting-agent deployment should assume OpenClaw host changes for:
 

@@ -122,7 +122,9 @@ This repository currently contains:
 - planning and architecture documents
 - Supabase migrations for audit, tenant, ledger, and approval foundations
 - documentation for reporting, schedules, storage, workflows, audit, and OpenClaw integration
-- a first NestJS API skeleton in `apps/api`
+- a first NestJS API in `apps/api` with health, reporting, journal workflow, approval, posting, reversal, audit, and agent-tool execution paths
+- a first React operator console in `apps/web`
+- Docker and Netlify deployment paths for the current API and web slices
 
 The implemented database foundations include:
 - `audit_logs`
@@ -135,6 +137,10 @@ The implemented database foundations include:
 - `accounting_periods`
 - `approval_requests`
 - guard logic for period overlap, immutability, and balanced posting
+- `idempotency_keys`
+- `agent_proposals`
+- reporting SQL views
+- schedule-related schema foundations
 
 ## What Is Planned
 
@@ -153,7 +159,8 @@ OpenClaw is the orchestration shell for agent interaction, not the accounting so
 The intended split is:
 - this repo owns the accounting backend, schemas, docs, and plugin package
 - OpenClaw provides the agent host and orchestration layer
-- production OpenClaw support may require a companion fork or upstreamed host changes
+- the initial OSS release will not vendor the OpenClaw host into this repo
+- production OpenClaw support should use a documented companion fork or upstreamed host changes once a compatible host target is validated
 - durable approval, posting, tenant enforcement, and audit remain in the accounting backend
 
 OpenClaw integration and hardening are documented separately in:
@@ -200,6 +207,13 @@ Useful implementation-facing docs:
 - `devplan/api_auth_client_model_01.md`
 - `devplan/packaging_distribution_01.md`
 - `devplan/openclaw_distribution_hardening_01.md`
+- `devplan/bootstrap_ux_01.md`
+
+Release and contribution docs:
+- `CONTRIBUTING.md`
+- `GOVERNANCE.md`
+- `SECURITY.md`
+- `ROADMAP.md`
 
 ## How To Get Started
 

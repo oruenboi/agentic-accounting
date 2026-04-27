@@ -1,7 +1,7 @@
 ---
 owner: Codex
-status: in_progress
-last_reviewed: 2026-04-23
+status: completed
+last_reviewed: 2026-04-26
 ---
 
 # TODO 01
@@ -60,15 +60,15 @@ last_reviewed: 2026-04-23
 - [x] Add docs publishing and source-of-truth documentation.
 - [x] Add backend process map documentation.
 - [x] Choose and publish an OSS license for the repository.
-- [ ] Add a security policy / responsible disclosure doc for the public repo.
-- [ ] Sanity-check and finalize public-facing OSS docs (`README.md`, quickstarts, governance, roadmap).
-- [ ] Decide and document the OpenClaw companion-fork vs upstream support stance for the initial OSS release.
-- [ ] Plan one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup.
+- [x] Add a security policy / responsible disclosure doc for the public repo.
+- [x] Sanity-check and finalize public-facing OSS docs (`README.md`, quickstarts, governance, roadmap).
+- [x] Decide and document the OpenClaw companion-fork vs upstream support stance for the initial OSS release.
+- [x] Plan one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup.
 - [x] Add `agent_proposals` schema and implementation.
 - [x] Add org-consistency and closed-period enforcement for ledger write paths.
 - [x] Define reporting SQL views for trial balance, balance sheet, P&L, and GL.
 - [x] Define schedule schema and balance sheet schedule generation flow.
-- [ ] Define agent tool execution/auth model for OpenClaw readiness.
+- [x] Define agent tool execution/auth model for OpenClaw readiness.
 - [x] Scaffold the npm workspace and `apps/api` backend runtime skeleton.
 - [x] Add Supabase-backed configuration, database access, and auth verification services for the API.
 - [x] Add first read-only reporting endpoints for health, trial balance, balance sheet, profit and loss, and general ledger.
