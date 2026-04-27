@@ -6,8 +6,12 @@ import type {
   JournalDraftDetail,
   JournalEntryDetail,
   JournalEntrySummary,
+  GeneralLedgerRow,
   ProposalDetail,
-  ProposalSummary
+  ProposalSummary,
+  ReportEnvelope,
+  StatementRow,
+  TrialBalanceRow
 } from './types';
 import type { ActorContext } from './types';
 import type { OperatorSession as Session } from './session';
@@ -19,6 +23,13 @@ interface ToolEnvelope<TResult> {
   result: TResult | null;
   errors: Array<{ code: string; message: string }>;
   human_summary?: string;
+}
+
+interface ApiEnvelope<TResult> {
+  ok: boolean;
+  request_id: string | null;
+  timestamp: string;
+  result: TResult;
 }
 
 export class OperatorApiError extends Error {
@@ -49,6 +60,45 @@ async function parseResponse<TResult>(response: Response): Promise<TResult> {
   }
 
   return body as TResult;
+}
+
+async function parseApiResponse<TResult>(response: Response): Promise<TResult> {
+  const body = (await response.json()) as ApiEnvelope<TResult> | TResult;
+
+  if ('ok' in (body as Record<string, unknown>) && 'result' in (body as Record<string, unknown>)) {
+    const envelope = body as ApiEnvelope<TResult>;
+
+    if (!envelope.ok) {
+      throw new OperatorApiError('API_REQUEST_FAILED', 'API request failed.');
+    }
+
+    return envelope.result;
+  }
+
+  return body as TResult;
+}
+
+async function fetchReport<TResult>(session: Session, reportPath: string, params: Record<string, string | boolean | undefined>) {
+  const query = new URLSearchParams();
+  query.set('organization_id', session.organizationId);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+
+  const response = await fetch(path(session.apiBaseUrl, `/api/v1/reports/${reportPath}?${query.toString()}`), {
+    headers: {
+      Authorization: `Bearer ${session.bearerToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new OperatorApiError('HTTP_ERROR', `Report request failed with status ${response.status}.`);
+  }
+
+  return parseApiResponse<TResult>(response);
 }
 
 export async function fetchToolSchema(session: Session) {
@@ -422,4 +472,115 @@ export async function loadDashboardSnapshot(session: Session): Promise<Dashboard
     assignedApprovals,
     recentEntries
   };
+}
+
+function reportEnvelope<TItem>(result: Record<string, unknown>, items: TItem[]): ReportEnvelope<TItem> {
+  return {
+    organizationId: String(result.organization_id),
+    asOfDate: result.as_of_date ? String(result.as_of_date) : undefined,
+    fromDate: result.from_date ? String(result.from_date) : undefined,
+    toDate: result.to_date ? String(result.to_date) : undefined,
+    actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
+    items
+  };
+}
+
+export async function getTrialBalanceReport(
+  session: Session,
+  filters: { asOfDate: string; includeZeroBalances?: boolean }
+): Promise<ReportEnvelope<TrialBalanceRow>> {
+  const result = await fetchReport<Record<string, unknown>>(session, 'trial-balance', {
+    as_of_date: filters.asOfDate,
+    include_zero_balances: filters.includeZeroBalances
+  });
+
+  return reportEnvelope(
+    result,
+    ((result.items ?? []) as Array<Record<string, unknown>>).map((item) => ({
+      accountId: String(item.account_id),
+      accountCode: item.account_code ? String(item.account_code) : null,
+      accountName: item.account_name ? String(item.account_name) : null,
+      accountType: item.account_type ? String(item.account_type) : null,
+      accountSubtype: item.account_subtype ? String(item.account_subtype) : null,
+      debitBalance: String(item.debit_balance ?? '0.00'),
+      creditBalance: String(item.credit_balance ?? '0.00'),
+      netBalance: String(item.net_balance ?? '0.00')
+    }))
+  );
+}
+
+function statementRows(result: Record<string, unknown>): StatementRow[] {
+  return ((result.items ?? []) as Array<Record<string, unknown>>).map((item) => ({
+    section: String(item.section ?? 'unknown'),
+    displayOrder: Number(item.display_order ?? 0),
+    accountId: String(item.account_id),
+    accountCode: item.account_code ? String(item.account_code) : null,
+    accountName: item.account_name ? String(item.account_name) : null,
+    accountType: item.account_type ? String(item.account_type) : null,
+    accountSubtype: item.account_subtype ? String(item.account_subtype) : null,
+    amount: String(item.amount ?? '0.00'),
+    sectionTotal: String(item.section_total ?? '0.00'),
+    balanceCheck: item.balance_check === null || item.balance_check === undefined ? null : String(item.balance_check),
+    netIncome: item.net_income === null || item.net_income === undefined ? null : String(item.net_income)
+  }));
+}
+
+export async function getBalanceSheetReport(
+  session: Session,
+  filters: { asOfDate: string; includeZeroBalances?: boolean }
+): Promise<ReportEnvelope<StatementRow>> {
+  const result = await fetchReport<Record<string, unknown>>(session, 'balance-sheet', {
+    as_of_date: filters.asOfDate,
+    include_zero_balances: filters.includeZeroBalances
+  });
+
+  return reportEnvelope(result, statementRows(result));
+}
+
+export async function getProfitAndLossReport(
+  session: Session,
+  filters: { fromDate: string; toDate: string; includeZeroBalances?: boolean }
+): Promise<ReportEnvelope<StatementRow>> {
+  const result = await fetchReport<Record<string, unknown>>(session, 'profit-and-loss', {
+    from_date: filters.fromDate,
+    to_date: filters.toDate,
+    include_zero_balances: filters.includeZeroBalances
+  });
+
+  return reportEnvelope(result, statementRows(result));
+}
+
+export async function getGeneralLedgerReport(
+  session: Session,
+  filters: { fromDate: string; toDate: string; accountIds?: string }
+): Promise<ReportEnvelope<GeneralLedgerRow>> {
+  const result = await fetchReport<Record<string, unknown>>(session, 'general-ledger', {
+    from_date: filters.fromDate,
+    to_date: filters.toDate,
+    account_ids: filters.accountIds
+  });
+
+  return reportEnvelope(
+    result,
+    ((result.items ?? []) as Array<Record<string, unknown>>).map((item) => ({
+      accountId: String(item.account_id),
+      accountCode: item.account_code ? String(item.account_code) : null,
+      accountName: item.account_name ? String(item.account_name) : null,
+      accountType: item.account_type ? String(item.account_type) : null,
+      accountSubtype: item.account_subtype ? String(item.account_subtype) : null,
+      rowType: String(item.row_type ?? 'entry'),
+      entryDate: String(item.entry_date),
+      journalEntryId: item.journal_entry_id ? String(item.journal_entry_id) : null,
+      journalEntryLineId: item.journal_entry_line_id ? String(item.journal_entry_line_id) : null,
+      entryNumber: item.entry_number ? String(item.entry_number) : null,
+      memo: item.memo ? String(item.memo) : null,
+      lineDescription: item.line_description ? String(item.line_description) : null,
+      sourceType: item.source_type ? String(item.source_type) : null,
+      lineNumber: item.line_number === null || item.line_number === undefined ? null : Number(item.line_number),
+      debit: String(item.debit ?? '0.00'),
+      credit: String(item.credit ?? '0.00'),
+      openingBalance: String(item.opening_balance ?? '0.00'),
+      runningBalance: String(item.running_balance ?? '0.00')
+    }))
+  );
 }

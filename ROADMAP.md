@@ -36,6 +36,7 @@ The first runtime slice now includes:
 - journal draft, proposal, approval, posting, reversal, audit-event, and timeline tools
 - deterministic minimal tenant seed rendering
 - React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines
+- React operator console report views for trial balance, balance sheet, profit and loss, and general ledger
 - API-only VPS deployment assets, operator-console VPS deployment assets, and Netlify static web deployment config
 
 ## What Is Still Implementation-Pending
@@ -43,7 +44,7 @@ The first runtime slice now includes:
 The main implementation gaps are:
 - schedule schema and generation runtime
 - worker/background execution
-- broader operator UI for reports, schedules, close, settings, and tasks
+- broader operator UI for schedules, close, settings, and tasks
 - OpenClaw plugin package and host integration
 - one-click bootstrap UX for database, storage, env templates, API, web, workers, and optional OpenClaw setup
 - production hardening and operational runbooks

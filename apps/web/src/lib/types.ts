@@ -147,3 +147,58 @@ export interface DashboardSnapshot {
   assignedApprovals: ApprovalRequestSummary[];
   recentEntries: JournalEntrySummary[];
 }
+
+export interface ReportEnvelope<TItem> {
+  organizationId: string;
+  asOfDate?: string;
+  fromDate?: string;
+  toDate?: string;
+  items: TItem[];
+  actorContext?: ActorContext;
+}
+
+export interface TrialBalanceRow {
+  accountId: string;
+  accountCode: string | null;
+  accountName: string | null;
+  accountType: string | null;
+  accountSubtype: string | null;
+  debitBalance: string | number;
+  creditBalance: string | number;
+  netBalance: string | number;
+}
+
+export interface StatementRow {
+  section: string;
+  displayOrder: number;
+  accountId: string;
+  accountCode: string | null;
+  accountName: string | null;
+  accountType: string | null;
+  accountSubtype: string | null;
+  amount: string | number;
+  sectionTotal: string | number;
+  balanceCheck?: string | number | null;
+  netIncome?: string | number | null;
+}
+
+export interface GeneralLedgerRow {
+  accountId: string;
+  accountCode: string | null;
+  accountName: string | null;
+  accountType: string | null;
+  accountSubtype: string | null;
+  rowType: string;
+  entryDate: string;
+  journalEntryId: string | null;
+  journalEntryLineId: string | null;
+  entryNumber: string | null;
+  memo: string | null;
+  lineDescription: string | null;
+  sourceType: string | null;
+  lineNumber: number | null;
+  debit: string | number;
+  credit: string | number;
+  openingBalance: string | number;
+  runningBalance: string | number;
+}

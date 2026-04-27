@@ -55,6 +55,7 @@ Already scaffolded in code:
   - proposal queue and detail
   - approval queue and detail
   - posted journal entry list and detail
+  - trial balance, balance sheet, profit and loss, and general ledger reports
   - entity timeline review
 - Postgres-backed reporting endpoints for:
   - `GET /api/v1/health`
@@ -313,6 +314,7 @@ The current console supports:
 - proposal queue and proposal detail with linked draft inspection
 - approval queue and approval detail with approve, reject, and escalate controls
 - posted journal entry list/detail
+- reports for trial balance, balance sheet, profit and loss, and general ledger
 - entity audit timeline review
 
 The session bootstrap will prefill the API base URL from `VITE_DEFAULT_API_BASE_URL` when present. For the intended production deployment, use:
