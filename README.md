@@ -184,6 +184,10 @@ Representative implemented endpoints:
 
 ## Deployment
 
+Production and self-hosting runbook:
+
+- `docs/deployment.md`
+
 API-only Docker deployment:
 
 - `infra/docker/api-only/README.md`
