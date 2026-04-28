@@ -3,6 +3,7 @@ import type {
   ApprovalRequestDetail,
   ApprovalRequestSummary,
   AuditEvent,
+  CloseOverview,
   DashboardSnapshot,
   JournalDraftDetail,
   JournalEntryDetail,
@@ -515,6 +516,77 @@ export async function loadDashboardSnapshot(session: Session): Promise<Dashboard
     pendingApprovals,
     assignedApprovals,
     recentEntries
+  };
+}
+
+function approvalRequestSummary(item: Record<string, unknown>): ApprovalRequestSummary {
+  return {
+    approvalRequestId: String(item.approval_request_id),
+    organizationId: String(item.organization_id),
+    targetEntityType: item.target_entity_type ? String(item.target_entity_type) : null,
+    targetEntityId: item.target_entity_id ? String(item.target_entity_id) : null,
+    draftNumber: item.draft_number ? String(item.draft_number) : null,
+    title: item.title ? String(item.title) : null,
+    status: String(item.status ?? 'unknown'),
+    priority: item.priority ? String(item.priority) : null,
+    currentApproverUserId: item.current_approver_user_id ? String(item.current_approver_user_id) : null,
+    submittedAt: item.submitted_at ? String(item.submitted_at) : null
+  };
+}
+
+function proposalSummary(item: Record<string, unknown>): ProposalSummary {
+  const draftId = item.draft_id ?? item.target_entity_id;
+
+  return {
+    proposalId: String(item.proposal_id),
+    organizationId: String(item.organization_id),
+    draftId: draftId ? String(draftId) : null,
+    draftNumber: item.draft_number ? String(item.draft_number) : null,
+    status: String(item.status ?? 'unknown'),
+    proposalType: String(item.proposal_type ?? 'unknown'),
+    title: item.title ? String(item.title) : null,
+    createdAt: item.created_at ? String(item.created_at) : null
+  };
+}
+
+function journalEntrySummary(item: Record<string, unknown>): JournalEntrySummary {
+  return {
+    journalEntryId: String(item.journal_entry_id),
+    organizationId: String(item.organization_id),
+    entryNumber: item.entry_number ? String(item.entry_number) : null,
+    entryDate: String(item.entry_date),
+    status: String(item.status ?? 'unknown'),
+    sourceType: item.source_type ? String(item.source_type) : null,
+    memo: item.memo ? String(item.memo) : null,
+    reversalJournalEntryId: item.reversal_journal_entry_id ? String(item.reversal_journal_entry_id) : null,
+    postedAt: item.posted_at ? String(item.posted_at) : null
+  };
+}
+
+export async function getCloseOverview(
+  session: Session,
+  filters: { asOfDate?: string; limit?: number }
+): Promise<CloseOverview> {
+  const result = await fetchApi<Record<string, unknown>>(session, '/api/v1/close/overview', {
+    as_of_date: filters.asOfDate,
+    limit: filters.limit ?? 10
+  });
+  const counts = (result.counts ?? {}) as Record<string, unknown>;
+
+  return {
+    organizationId: String(result.organization_id),
+    asOfDate: String(result.as_of_date),
+    actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
+    counts: {
+      pendingApprovals: Number(counts.pending_approvals ?? 0),
+      openProposals: Number(counts.open_proposals ?? 0),
+      scheduleBlockers: Number(counts.schedule_blockers ?? 0),
+      recentEntries: Number(counts.recent_entries ?? 0)
+    },
+    pendingApprovals: ((result.pending_approvals ?? []) as Array<Record<string, unknown>>).map(approvalRequestSummary),
+    openProposals: ((result.open_proposals ?? []) as Array<Record<string, unknown>>).map(proposalSummary),
+    scheduleBlockers: ((result.schedule_blockers ?? []) as Array<Record<string, unknown>>).map(scheduleRunSummary),
+    recentEntries: ((result.recent_entries ?? []) as Array<Record<string, unknown>>).map(journalEntrySummary)
   };
 }
 

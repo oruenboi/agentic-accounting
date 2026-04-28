@@ -3,6 +3,7 @@ import {
   createScheduleDefinition,
   executeTool,
   generateScheduleRun,
+  getCloseOverview,
   getScheduleRun,
   getTrialBalanceReport,
   listAccounts,
@@ -166,6 +167,68 @@ describe('listAccounts', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.example.com/api/v1/accounts?organization_id=org-1&status=active&postable_only=true&limit=25',
+      {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      }
+    );
+  });
+});
+
+describe('getCloseOverview', () => {
+  it('loads close overview from the close API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-11',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          as_of_date: '2026-04-30',
+          counts: {
+            pending_approvals: 1,
+            open_proposals: 1,
+            schedule_blockers: 1,
+            recent_entries: 1
+          },
+          pending_approvals: [{ approval_request_id: 'approval-1', organization_id: 'org-1', status: 'pending' }],
+          open_proposals: [{ proposal_id: 'proposal-1', organization_id: 'org-1', status: 'needs_review' }],
+          schedule_blockers: [
+            {
+              schedule_run_id: 'run-1',
+              organization_id: 'org-1',
+              schedule_definition_id: 'definition-1',
+              schedule_type: 'bank',
+              as_of_date: '2026-04-30',
+              status: 'reconciled',
+              reconciliation_status: 'unreviewed'
+            }
+          ],
+          recent_entries: [{ journal_entry_id: 'entry-1', organization_id: 'org-1', entry_date: '2026-04-30', status: 'posted' }]
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getCloseOverview(session, { asOfDate: '2026-04-30', limit: 5 })).resolves.toEqual(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        asOfDate: '2026-04-30',
+        counts: {
+          pendingApprovals: 1,
+          openProposals: 1,
+          scheduleBlockers: 1,
+          recentEntries: 1
+        },
+        scheduleBlockers: [expect.objectContaining({ scheduleRunId: 'run-1', reconciliationStatus: 'unreviewed' })]
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.com/api/v1/close/overview?organization_id=org-1&as_of_date=2026-04-30&limit=5',
       {
         headers: {
           Authorization: 'Bearer token'

@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileClock, FileSearch, ScrollText, ShieldCheck, LogOut, ChartNoAxesCombined, ListChecks } from 'lucide-react';
+import { LayoutDashboard, FileClock, FileSearch, ScrollText, ShieldCheck, LogOut, ChartNoAxesCombined, ListChecks, ClipboardCheck } from 'lucide-react';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/close', label: 'Close', icon: ClipboardCheck },
   { to: '/proposals', label: 'Proposals', icon: FileSearch },
   { to: '/approvals', label: 'Approvals', icon: ShieldCheck },
   { to: '/ledger/entries', label: 'Posted Entries', icon: ScrollText },

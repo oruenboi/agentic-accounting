@@ -148,6 +148,22 @@ export interface DashboardSnapshot {
   recentEntries: JournalEntrySummary[];
 }
 
+export interface CloseOverview {
+  organizationId: string;
+  asOfDate: string;
+  actorContext?: ActorContext;
+  counts: {
+    pendingApprovals: number;
+    openProposals: number;
+    scheduleBlockers: number;
+    recentEntries: number;
+  };
+  pendingApprovals: ApprovalRequestSummary[];
+  openProposals: ProposalSummary[];
+  scheduleBlockers: ScheduleRunSummary[];
+  recentEntries: JournalEntrySummary[];
+}
+
 export interface ReportEnvelope<TItem> {
   organizationId: string;
   asOfDate?: string;

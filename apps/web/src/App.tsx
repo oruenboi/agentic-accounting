@@ -4,6 +4,7 @@ import { AppShell } from './components/AppShell';
 import { useOperatorSession } from './session/OperatorSessionContext';
 import { SessionPage } from './pages/SessionPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ClosePage } from './pages/ClosePage';
 import { ProposalsPage } from './pages/ProposalsPage';
 import { ProposalDetailPage } from './pages/ProposalDetailPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -52,6 +53,7 @@ export function App() {
       >
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/close" element={<ClosePage />} />
         <Route path="/proposals" element={<ProposalsPage />} />
         <Route path="/proposals/:proposalId" element={<ProposalDetailPage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
