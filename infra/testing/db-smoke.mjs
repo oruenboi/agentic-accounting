@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -84,20 +84,7 @@ async function applyMigrations(client) {
     $$;
   `);
 
-  const files = [
-    '202604020001_audit_schema.sql',
-    '202604020002_tenant_schema.sql',
-    '202604020003_ledger_schema.sql',
-    '202604020004_ledger_guards.sql',
-    '202604030001_approval_requests.sql',
-    '202604070001_idempotency_keys.sql',
-    '202604070002_agent_proposals.sql',
-    '202604070003_ledger_write_path_guards.sql',
-    '202604070004_reporting_sql.sql',
-    '202604070005_schedule_schema.sql',
-    '202604230001_agent_proposals_pending_approval.sql',
-    '202604230002_approval_actions_escalated.sql'
-  ];
+  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort();
 
   for (const file of files) {
     const sql = await readFile(path.join(migrationsDir, file), 'utf8');
