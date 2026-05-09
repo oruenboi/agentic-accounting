@@ -17,6 +17,7 @@ import { ScheduleRunDetailPage } from './pages/ScheduleRunDetailPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { AuditHomePage } from './pages/AuditHomePage';
 import { AuditTimelinePage } from './pages/AuditTimelinePage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { session } = useOperatorSession();
@@ -67,6 +68,7 @@ export function App() {
         <Route path="/schedules/runs/:runId" element={<ScheduleRunDetailPage />} />
         <Route path="/audit" element={<AuditHomePage />} />
         <Route path="/audit/:entityType/:entityId" element={<AuditTimelinePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

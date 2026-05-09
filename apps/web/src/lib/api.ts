@@ -14,6 +14,8 @@ import type {
   GeneralLedgerRow,
   ProposalDetail,
   ProposalSummary,
+  OrganizationMember,
+  OrganizationSettings,
   ReportEnvelope,
   ScheduleDefinitionSummary,
   ScheduleRunDetail,
@@ -21,7 +23,9 @@ import type {
   StatementRow,
   TrialBalanceRow,
   UpdateAccountInput,
-  UpdateAccountStatusInput
+  UpdateAccountStatusInput,
+  UpdateOrganizationMemberInput,
+  UpdateOrganizationSettingsInput
 } from './types';
 import type { ActorContext } from './types';
 import type { OperatorSession as Session } from './session';
@@ -719,6 +723,40 @@ function accountMutationItem(result: Record<string, unknown>): AccountSummary {
   return accountSummary((result.item ?? result) as Record<string, unknown>);
 }
 
+function organizationSettings(result: Record<string, unknown>): OrganizationSettings {
+  const item = (result.item ?? result) as Record<string, unknown>;
+
+  return {
+    organizationId: String(item.organization_id),
+    name: String(item.name ?? ''),
+    legalName: item.legal_name ? String(item.legal_name) : null,
+    baseCurrency: String(item.base_currency ?? 'USD'),
+    fiscalYearStartMonth: Number(item.fiscal_year_start_month ?? 1),
+    countryCode: item.country_code ? String(item.country_code) : null,
+    timezone: item.timezone ? String(item.timezone) : null,
+    updatedAt: item.updated_at ? String(item.updated_at) : null
+  };
+}
+
+function organizationMember(item: Record<string, unknown>): OrganizationMember {
+  return {
+    membershipId: String(item.organization_member_id ?? item.membership_id ?? item.id),
+    organizationId: String(item.organization_id),
+    userId: item.user_id ? String(item.user_id) : null,
+    email: item.email ? String(item.email) : null,
+    displayName: item.display_name ? String(item.display_name) : null,
+    role: String(item.role ?? 'member'),
+    status: String(item.status ?? 'active'),
+    isExternalClient: Boolean(item.is_external_client),
+    createdAt: item.created_at ? String(item.created_at) : null,
+    updatedAt: item.updated_at ? String(item.updated_at) : null
+  };
+}
+
+function organizationMemberMutationItem(result: Record<string, unknown>): OrganizationMember {
+  return organizationMember((result.item ?? result) as Record<string, unknown>);
+}
+
 export async function listAccounts(
   session: Session,
   filters: { type?: string; status?: string; postableOnly?: boolean; limit?: number }
@@ -796,6 +834,69 @@ export async function updateAccountStatus(
   );
 
   return accountMutationItem(result);
+}
+
+export async function getOrganizationSettings(session: Session): Promise<OrganizationSettings> {
+  const result = await fetchApi<Record<string, unknown>>(session, '/api/v1/settings/organization', {});
+
+  return organizationSettings(result);
+}
+
+export async function updateOrganizationSettings(
+  session: Session,
+  input: UpdateOrganizationSettingsInput
+): Promise<OrganizationSettings> {
+  const result = await patchApi<
+    {
+      organization_id: string;
+      name?: string;
+      legal_name?: string | null;
+      base_currency?: string;
+      fiscal_year_start_month?: number;
+      country_code?: string | null;
+      timezone?: string | null;
+    },
+    Record<string, unknown>
+  >(session, '/api/v1/settings/organization', {
+    organization_id: session.organizationId,
+    name: input.name,
+    legal_name: input.legalName,
+    base_currency: input.baseCurrency,
+    fiscal_year_start_month: input.fiscalYearStartMonth,
+    country_code: input.countryCode,
+    timezone: input.timezone
+  });
+
+  return organizationSettings(result);
+}
+
+export async function listOrganizationMembers(session: Session): Promise<OrganizationMember[]> {
+  const result = await fetchApi<{ items?: Array<Record<string, unknown>> }>(session, '/api/v1/settings/members', {});
+
+  return (result.items ?? []).map(organizationMember);
+}
+
+export async function updateOrganizationMember(
+  session: Session,
+  membershipId: string,
+  input: UpdateOrganizationMemberInput
+): Promise<OrganizationMember> {
+  const result = await patchApi<
+    {
+      organization_id: string;
+      role?: string;
+      status?: string;
+      is_external_client?: boolean;
+    },
+    Record<string, unknown>
+  >(session, `/api/v1/settings/members/${membershipId}`, {
+    organization_id: session.organizationId,
+    role: input.role,
+    status: input.status,
+    is_external_client: input.isExternalClient
+  });
+
+  return organizationMemberMutationItem(result);
 }
 
 export async function getTrialBalanceReport(

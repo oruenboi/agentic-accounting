@@ -6,9 +6,11 @@ import {
   executeTool,
   generateScheduleRun,
   getCloseOverview,
+  getOrganizationSettings,
   getScheduleRun,
   getTrialBalanceReport,
   listAccounts,
+  listOrganizationMembers,
   listScheduleDefinitions,
   listScheduleRuns,
   OperatorApiError,
@@ -16,7 +18,9 @@ import {
   reviewScheduleRun,
   startCloseReview,
   updateAccount,
-  updateAccountStatus
+  updateAccountStatus,
+  updateOrganizationMember,
+  updateOrganizationSettings
 } from './api';
 import type { OperatorSession } from './session';
 
@@ -322,6 +326,191 @@ describe('account maintenance helpers', () => {
       body: JSON.stringify({
         organization_id: 'org-1',
         status: 'inactive'
+      })
+    });
+  });
+});
+
+describe('settings helpers', () => {
+  it('loads organization settings from the settings API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-18',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          name: 'Acme',
+          legal_name: 'Acme Inc.',
+          base_currency: 'USD',
+          fiscal_year_start_month: 4,
+          country_code: 'US',
+          timezone: 'America/New_York',
+          updated_at: '2026-04-28T00:00:00.000Z'
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getOrganizationSettings(session)).resolves.toEqual({
+      organizationId: 'org-1',
+      name: 'Acme',
+      legalName: 'Acme Inc.',
+      baseCurrency: 'USD',
+      fiscalYearStartMonth: 4,
+      countryCode: 'US',
+      timezone: 'America/New_York',
+      updatedAt: '2026-04-28T00:00:00.000Z'
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/settings/organization?organization_id=org-1', {
+      headers: {
+        Authorization: 'Bearer token'
+      }
+    });
+  });
+
+  it('updates organization settings through the settings API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-19',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          item: {
+            organization_id: 'org-1',
+            name: 'Acme Ops',
+            legal_name: null,
+            base_currency: 'SGD',
+            fiscal_year_start_month: 1,
+            country_code: 'SG',
+            timezone: 'Asia/Singapore'
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      updateOrganizationSettings(session, {
+        name: 'Acme Ops',
+        legalName: null,
+        baseCurrency: 'SGD',
+        fiscalYearStartMonth: 1,
+        countryCode: 'SG',
+        timezone: 'Asia/Singapore'
+      })
+    ).resolves.toEqual(expect.objectContaining({ organizationId: 'org-1', name: 'Acme Ops', baseCurrency: 'SGD' }));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/settings/organization', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        name: 'Acme Ops',
+        legal_name: null,
+        base_currency: 'SGD',
+        fiscal_year_start_month: 1,
+        country_code: 'SG',
+        timezone: 'Asia/Singapore'
+      })
+    });
+  });
+
+  it('lists organization members from the settings API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-20',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          organization_id: 'org-1',
+          items: [
+            {
+              organization_member_id: 'membership-1',
+              organization_id: 'org-1',
+              user_id: 'user-1',
+              email: 'owner@example.com',
+              display_name: 'Owner User',
+              role: 'org_admin',
+              status: 'active',
+              is_external_client: false
+            }
+          ]
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listOrganizationMembers(session)).resolves.toEqual([
+      expect.objectContaining({
+        membershipId: 'membership-1',
+        userId: 'user-1',
+        email: 'owner@example.com',
+        displayName: 'Owner User',
+        role: 'org_admin',
+        status: 'active',
+        isExternalClient: false
+      })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/settings/members?organization_id=org-1', {
+      headers: {
+        Authorization: 'Bearer token'
+      }
+    });
+  });
+
+  it('updates organization members through the settings API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-21',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          item: {
+            organization_member_id: 'membership-1',
+            organization_id: 'org-1',
+            email: 'client@example.com',
+            role: 'client_viewer',
+            status: 'active',
+            is_external_client: true
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      updateOrganizationMember(session, 'membership-1', {
+        role: 'client_viewer',
+        status: 'active',
+        isExternalClient: true
+      })
+    ).resolves.toEqual(expect.objectContaining({ membershipId: 'membership-1', role: 'client_viewer', isExternalClient: true }));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/settings/members/membership-1', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        role: 'client_viewer',
+        status: 'active',
+        is_external_client: true
       })
     });
   });

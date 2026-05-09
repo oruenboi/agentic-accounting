@@ -279,6 +279,45 @@ export interface UpdateAccountStatusInput {
   status: string;
 }
 
+export interface OrganizationSettings {
+  organizationId: string;
+  name: string;
+  legalName: string | null;
+  baseCurrency: string;
+  fiscalYearStartMonth: number;
+  countryCode: string | null;
+  timezone: string | null;
+  updatedAt: string | null;
+}
+
+export interface OrganizationMember {
+  membershipId: string;
+  organizationId: string;
+  userId: string | null;
+  email: string | null;
+  displayName: string | null;
+  role: string;
+  status: string;
+  isExternalClient: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface UpdateOrganizationSettingsInput {
+  name?: string;
+  legalName?: string | null;
+  baseCurrency?: string;
+  fiscalYearStartMonth?: number;
+  countryCode?: string | null;
+  timezone?: string | null;
+}
+
+export interface UpdateOrganizationMemberInput {
+  role?: string;
+  status?: string;
+  isExternalClient?: boolean;
+}
+
 export interface ScheduleRunSummary {
   scheduleRunId: string;
   organizationId: string;

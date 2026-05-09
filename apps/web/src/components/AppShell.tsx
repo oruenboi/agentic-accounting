@@ -9,7 +9,8 @@ import {
   ChartNoAxesCombined,
   ListChecks,
   ClipboardCheck,
-  BookOpenCheck
+  BookOpenCheck,
+  Settings
 } from 'lucide-react';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { Button } from './ui/Button';
@@ -24,7 +25,8 @@ const navItems = [
   { to: '/reports', label: 'Reports', icon: ChartNoAxesCombined },
   { to: '/accounts', label: 'Accounts', icon: BookOpenCheck },
   { to: '/schedules', label: 'Schedules', icon: ListChecks },
-  { to: '/audit', label: 'Audit', icon: FileClock }
+  { to: '/audit', label: 'Audit', icon: FileClock },
+  { to: '/settings', label: 'Settings', icon: Settings }
 ];
 
 export function AppShell() {

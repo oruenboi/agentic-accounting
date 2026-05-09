@@ -10,6 +10,7 @@ import { DatabaseModule } from './modules/database/database.module';
 import { HealthModule } from './modules/health/health.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
     CloseModule,
     ReportsModule,
     SchedulesModule,
+    SettingsModule,
     AgentToolsModule
   ]
 })
