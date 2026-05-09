@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Field, TextInput } from '../components/ui/Field';
+import { Field, TextArea, TextInput } from '../components/ui/Field';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/States';
 import { Table, TableCell, TableRow } from '../components/ui/Table';
-import { getCloseOverview } from '../lib/api';
+import { closePeriod, getCloseOverview, reopenPeriod, startCloseReview } from '../lib/api';
 import { formatCount, formatCurrency, formatDateTime } from '../lib/format';
 import { useOperatorSession } from '../session/OperatorSessionContext';
 import { useAsyncData } from './useAsyncData';
@@ -29,13 +30,34 @@ function pluralize(value: number, singular: string, plural = `${singular}s`) {
   return `${formatCount(value)} ${value === 1 ? singular : plural}`;
 }
 
+function periodActionLabel(status: string) {
+  if (status === 'closed') {
+    return 'Reopen period';
+  }
+
+  if (status === 'pre_close_review') {
+    return 'Close period';
+  }
+
+  return 'Start review';
+}
+
 export function ClosePage() {
   const { session } = useOperatorSession();
   const [asOfDate, setAsOfDate] = useState(today());
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const [actionNote, setActionNote] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const { data, loading, error } = useAsyncData(
     () => getCloseOverview(session!, { asOfDate, limit: 10 }),
-    [asOfDate, session]
+    [asOfDate, refreshIndex, session]
   );
+
+  useEffect(() => {
+    setActionNote('');
+    setActionError(null);
+  }, [asOfDate]);
 
   if (loading) {
     return <LoadingState label="Loading close overview..." />;
@@ -51,12 +73,45 @@ export function ClosePage() {
 
   const blockerCount = data.counts.pendingApprovals + data.counts.openProposals + data.counts.scheduleBlockers;
   const closeReady = blockerCount === 0;
+  const period = data.period;
+  const periodStatus = period?.status ?? null;
+  const actionLabel = periodStatus ? periodActionLabel(periodStatus) : null;
+  const actionNoteValue = actionNote.trim();
+  const closeBlocked = periodStatus === 'pre_close_review' && !closeReady;
+  const reopenBlocked = periodStatus === 'closed' && actionNoteValue.length === 0;
+  const actionDisabled = actionPending || closeBlocked || reopenBlocked;
   const cards = [
     { label: 'Pending approvals', count: data.counts.pendingApprovals, tone: 'pending', href: '#pending-approvals', action: 'Resolve' },
     { label: 'Open proposals', count: data.counts.openProposals, tone: 'needs_review', href: '#open-proposals', action: 'Review' },
     { label: 'Schedule blockers', count: data.counts.scheduleBlockers, tone: 'variance_detected', href: '#schedule-blockers', action: 'Clear' },
     { label: 'Recent entries', count: data.counts.recentEntries, tone: 'posted', href: '#recent-entries', action: 'Inspect' }
   ];
+
+  async function handlePeriodAction() {
+    if (!session || !period || actionDisabled) {
+      return;
+    }
+
+    setActionPending(true);
+    setActionError(null);
+
+    try {
+      if (period.status === 'closed') {
+        await reopenPeriod(session, period.periodId, { reason: actionNoteValue });
+      } else if (period.status === 'pre_close_review') {
+        await closePeriod(session, period.periodId, { note: actionNoteValue || undefined });
+      } else {
+        await startCloseReview(session, period.periodId, { note: actionNoteValue || undefined });
+      }
+
+      setActionNote('');
+      setRefreshIndex((value) => value + 1);
+    } catch (cause: unknown) {
+      setActionError(cause instanceof Error ? cause.message : 'Close period action failed.');
+    } finally {
+      setActionPending(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -104,18 +159,73 @@ export function ClosePage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Period status</CardTitle>
+            {period ? <Badge value={period.status} /> : <Badge value="no_period" />}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {period ? (
+            <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Period</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">{period.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Range</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">
+                    {period.periodStart} to {period.periodEnd}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Closed</p>
+                  <p className="mt-1 text-sm text-black/65">{period.closedAt ? formatDateTime(period.closedAt) : 'Not closed'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Reopened</p>
+                  <p className="mt-1 text-sm text-black/65">{period.reopenedAt ? formatDateTime(period.reopenedAt) : 'No reopen event'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Field
+                  label={period.status === 'closed' ? 'Reopen reason' : 'Action note'}
+                  hint={period.status === 'closed' ? 'Required before reopening.' : 'Optional close trail note.'}
+                >
+                  <TextArea
+                    value={actionNote}
+                    onChange={(event) => setActionNote(event.target.value)}
+                    placeholder={period.status === 'closed' ? 'Reason for reopening' : 'Close action note'}
+                  />
+                </Field>
+                {actionError ? <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm font-semibold text-danger">{actionError}</p> : null}
+                {closeBlocked ? <p className="text-xs text-black/55">{pluralize(blockerCount, 'blocker')} must be cleared before close.</p> : null}
+                <Button className="w-full" variant={period.status === 'closed' ? 'danger' : 'primary'} disabled={actionDisabled} onClick={handlePeriodAction}>
+                  {actionPending ? 'Working...' : actionLabel}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <EmptyState title="No period for date" body="No close period was returned for the selected as-of date." />
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-4">
         {cards.map((card) => (
           <a key={card.label} href={card.href} className="block focus:outline-none focus:ring-2 focus:ring-accent/40">
             <Card className="h-full transition hover:-translate-y-0.5 hover:bg-white">
-            <CardContent className="space-y-3 py-6">
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-sm font-medium text-black/60">{card.label}</span>
-                <Badge value={card.tone} className="text-[10px]" />
-              </div>
-              <p className="text-4xl font-semibold text-ink">{formatCount(card.count)}</p>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">{card.action}</p>
-            </CardContent>
+              <CardContent className="space-y-3 py-6">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-sm font-medium text-black/60">{card.label}</span>
+                  <Badge value={card.tone} className="text-[10px]" />
+                </div>
+                <p className="text-4xl font-semibold text-ink">{formatCount(card.count)}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">{card.action}</p>
+              </CardContent>
             </Card>
           </a>
         ))}

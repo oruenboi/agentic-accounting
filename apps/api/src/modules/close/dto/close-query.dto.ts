@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export class CloseOverviewQueryDto {
   @IsUUID()
@@ -15,4 +15,19 @@ export class CloseOverviewQueryDto {
   @Min(1)
   @Max(50)
   limit = 10;
+}
+
+export class ClosePeriodActionDto {
+  @IsUUID()
+  organization_id!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }

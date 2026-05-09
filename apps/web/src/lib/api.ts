@@ -4,6 +4,8 @@ import type {
   ApprovalRequestSummary,
   AuditEvent,
   CloseOverview,
+  ClosePeriod,
+  ClosePeriodActionResult,
   CreateAccountInput,
   DashboardSnapshot,
   JournalDraftDetail,
@@ -583,6 +585,41 @@ function journalEntrySummary(item: Record<string, unknown>): JournalEntrySummary
   };
 }
 
+function closePeriodSummary(item: Record<string, unknown>): ClosePeriod {
+  return {
+    periodId: String(item.period_id),
+    name: String(item.name ?? 'Unnamed period'),
+    periodStart: String(item.period_start),
+    periodEnd: String(item.period_end),
+    status: String(item.status ?? 'unknown'),
+    closedAt: item.closed_at ? String(item.closed_at) : null,
+    closedByUserId: item.closed_by_user_id ? String(item.closed_by_user_id) : null,
+    reopenedAt: item.reopened_at ? String(item.reopened_at) : null,
+    reopenedByUserId: item.reopened_by_user_id ? String(item.reopened_by_user_id) : null
+  };
+}
+
+function closeBlockerCounts(value: Record<string, unknown> | null | undefined): ClosePeriodActionResult['blockerCounts'] {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  return {
+    pendingApprovals: Number(value.pending_approvals ?? 0),
+    openProposals: Number(value.open_proposals ?? 0),
+    scheduleBlockers: Number(value.schedule_blockers ?? 0),
+    recentEntries: Number(value.recent_entries ?? 0)
+  };
+}
+
+function closePeriodActionResult(result: Record<string, unknown>): ClosePeriodActionResult {
+  return {
+    period: closePeriodSummary((result.period ?? result) as Record<string, unknown>),
+    actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
+    blockerCounts: closeBlockerCounts(result.blocker_counts as Record<string, unknown> | undefined)
+  };
+}
+
 export async function getCloseOverview(
   session: Session,
   filters: { asOfDate?: string; limit?: number }
@@ -596,6 +633,7 @@ export async function getCloseOverview(
   return {
     organizationId: String(result.organization_id),
     asOfDate: String(result.as_of_date),
+    period: result.period ? closePeriodSummary(result.period as Record<string, unknown>) : null,
     actorContext: actorContext(result.actor_context as Record<string, unknown> | undefined),
     counts: {
       pendingApprovals: Number(counts.pending_approvals ?? 0),
@@ -608,6 +646,45 @@ export async function getCloseOverview(
     scheduleBlockers: ((result.schedule_blockers ?? []) as Array<Record<string, unknown>>).map(scheduleRunSummary),
     recentEntries: ((result.recent_entries ?? []) as Array<Record<string, unknown>>).map(journalEntrySummary)
   };
+}
+
+export async function startCloseReview(session: Session, periodId: string, input: { note?: string }): Promise<ClosePeriodActionResult> {
+  const result = await postApi<{ organization_id: string; note?: string }, Record<string, unknown>>(
+    session,
+    `/api/v1/close/periods/${periodId}/start-review`,
+    {
+      organization_id: session.organizationId,
+      note: input.note
+    }
+  );
+
+  return closePeriodActionResult(result);
+}
+
+export async function closePeriod(session: Session, periodId: string, input: { note?: string }): Promise<ClosePeriodActionResult> {
+  const result = await postApi<{ organization_id: string; note?: string }, Record<string, unknown>>(
+    session,
+    `/api/v1/close/periods/${periodId}/close`,
+    {
+      organization_id: session.organizationId,
+      note: input.note
+    }
+  );
+
+  return closePeriodActionResult(result);
+}
+
+export async function reopenPeriod(session: Session, periodId: string, input: { reason?: string }): Promise<ClosePeriodActionResult> {
+  const result = await postApi<{ organization_id: string; reason?: string }, Record<string, unknown>>(
+    session,
+    `/api/v1/close/periods/${periodId}/reopen`,
+    {
+      organization_id: session.organizationId,
+      reason: input.reason
+    }
+  );
+
+  return closePeriodActionResult(result);
 }
 
 function reportEnvelope<TItem>(result: Record<string, unknown>, items: TItem[]): ReportEnvelope<TItem> {

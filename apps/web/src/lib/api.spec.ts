@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  closePeriod,
   createAccount,
   createScheduleDefinition,
   executeTool,
@@ -11,7 +12,9 @@ import {
   listScheduleDefinitions,
   listScheduleRuns,
   OperatorApiError,
+  reopenPeriod,
   reviewScheduleRun,
+  startCloseReview,
   updateAccount,
   updateAccountStatus
 } from './api';
@@ -341,6 +344,17 @@ describe('getCloseOverview', () => {
             schedule_blockers: 1,
             recent_entries: 1
           },
+          period: {
+            period_id: 'period-1',
+            name: 'April 2026',
+            period_start: '2026-04-01',
+            period_end: '2026-04-30',
+            status: 'pre_close_review',
+            closed_at: null,
+            closed_by_user_id: null,
+            reopened_at: null,
+            reopened_by_user_id: null
+          },
           pending_approvals: [{ approval_request_id: 'approval-1', organization_id: 'org-1', status: 'pending' }],
           open_proposals: [{ proposal_id: 'proposal-1', organization_id: 'org-1', status: 'needs_review' }],
           schedule_blockers: [
@@ -371,6 +385,13 @@ describe('getCloseOverview', () => {
           scheduleBlockers: 1,
           recentEntries: 1
         },
+        period: expect.objectContaining({
+          periodId: 'period-1',
+          name: 'April 2026',
+          periodStart: '2026-04-01',
+          periodEnd: '2026-04-30',
+          status: 'pre_close_review'
+        }),
         scheduleBlockers: [expect.objectContaining({ scheduleRunId: 'run-1', reconciliationStatus: 'unreviewed' })]
       })
     );
@@ -383,6 +404,133 @@ describe('getCloseOverview', () => {
         }
       }
     );
+  });
+
+  it('starts period review through the close API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-15',
+        timestamp: '2026-04-28T00:00:00.000Z',
+        result: {
+          period: {
+            period_id: 'period-1',
+            name: 'April 2026',
+            period_start: '2026-04-01',
+            period_end: '2026-04-30',
+            status: 'pre_close_review'
+          },
+          blocker_counts: {
+            pending_approvals: 0,
+            open_proposals: 0,
+            schedule_blockers: 0,
+            recent_entries: 2
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(startCloseReview(session, 'period-1', { note: 'Ready for review' })).resolves.toEqual(
+      expect.objectContaining({
+        period: expect.objectContaining({ periodId: 'period-1', status: 'pre_close_review' }),
+        blockerCounts: {
+          pendingApprovals: 0,
+          openProposals: 0,
+          scheduleBlockers: 0,
+          recentEntries: 2
+        }
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/close/periods/period-1/start-review', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        note: 'Ready for review'
+      })
+    });
+  });
+
+  it('closes and reopens periods through the close API', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          request_id: 'request-16',
+          timestamp: '2026-04-28T00:00:00.000Z',
+          result: {
+            period: {
+              period_id: 'period-1',
+              name: 'April 2026',
+              period_start: '2026-04-01',
+              period_end: '2026-04-30',
+              status: 'closed',
+              closed_at: '2026-05-01T10:00:00.000Z',
+              closed_by_user_id: 'user-1'
+            }
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          request_id: 'request-17',
+          timestamp: '2026-04-28T00:00:00.000Z',
+          result: {
+            period: {
+              period_id: 'period-1',
+              name: 'April 2026',
+              period_start: '2026-04-01',
+              period_end: '2026-04-30',
+              status: 'reopened',
+              reopened_at: '2026-05-02T10:00:00.000Z',
+              reopened_by_user_id: 'user-2'
+            }
+          }
+        })
+      });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(closePeriod(session, 'period-1', { note: 'No blockers' })).resolves.toEqual(
+      expect.objectContaining({ period: expect.objectContaining({ periodId: 'period-1', status: 'closed' }) })
+    );
+    await expect(reopenPeriod(session, 'period-1', { reason: 'Late invoice' })).resolves.toEqual(
+      expect.objectContaining({ period: expect.objectContaining({ periodId: 'period-1', status: 'reopened' }) })
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'https://api.example.com/api/v1/close/periods/period-1/close', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        note: 'No blockers'
+      })
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://api.example.com/api/v1/close/periods/period-1/reopen', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        reason: 'Late invoice'
+      })
+    });
   });
 });
 

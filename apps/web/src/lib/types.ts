@@ -151,6 +151,7 @@ export interface DashboardSnapshot {
 export interface CloseOverview {
   organizationId: string;
   asOfDate: string;
+  period: ClosePeriod | null;
   actorContext?: ActorContext;
   counts: {
     pendingApprovals: number;
@@ -162,6 +163,29 @@ export interface CloseOverview {
   openProposals: ProposalSummary[];
   scheduleBlockers: ScheduleRunSummary[];
   recentEntries: JournalEntrySummary[];
+}
+
+export interface ClosePeriod {
+  periodId: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  closedAt: string | null;
+  closedByUserId: string | null;
+  reopenedAt: string | null;
+  reopenedByUserId: string | null;
+}
+
+export interface ClosePeriodActionResult {
+  period: ClosePeriod;
+  actorContext?: ActorContext;
+  blockerCounts?: {
+    pendingApprovals: number;
+    openProposals: number;
+    scheduleBlockers: number;
+    recentEntries: number;
+  };
 }
 
 export interface ReportEnvelope<TItem> {
