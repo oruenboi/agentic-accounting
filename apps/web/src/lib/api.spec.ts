@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createAccount,
   createScheduleDefinition,
   executeTool,
   generateScheduleRun,
@@ -10,7 +11,9 @@ import {
   listScheduleDefinitions,
   listScheduleRuns,
   OperatorApiError,
-  reviewScheduleRun
+  reviewScheduleRun,
+  updateAccount,
+  updateAccountStatus
 } from './api';
 import type { OperatorSession } from './session';
 
@@ -173,6 +176,151 @@ describe('listAccounts', () => {
         }
       }
     );
+  });
+});
+
+describe('account maintenance helpers', () => {
+  it('creates an account through the accounts API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-12',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          item: {
+            account_id: 'account-2',
+            organization_id: 'org-1',
+            code: '1000',
+            name: 'Cash at bank',
+            type: 'asset',
+            subtype: 'cash',
+            status: 'active',
+            is_postable: true
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      createAccount(session, {
+        code: '1000',
+        name: 'Cash at bank',
+        type: 'asset',
+        subtype: 'cash',
+        isPostable: true
+      })
+    ).resolves.toEqual(expect.objectContaining({ accountId: 'account-2', code: '1000', isPostable: true }));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/accounts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        code: '1000',
+        name: 'Cash at bank',
+        type: 'asset',
+        subtype: 'cash',
+        parent_account_id: undefined,
+        status: undefined,
+        is_postable: true
+      })
+    });
+  });
+
+  it('updates an account through the accounts API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-13',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          item: {
+            account_id: 'account-2',
+            organization_id: 'org-1',
+            code: '1001',
+            name: 'Operating bank',
+            type: 'asset',
+            subtype: null,
+            parent_account_id: null,
+            status: 'active',
+            is_postable: false
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      updateAccount(session, 'account-2', {
+        name: 'Operating bank',
+        subtype: null,
+        parentAccountId: null,
+        isPostable: false
+      })
+    ).resolves.toEqual(expect.objectContaining({ accountId: 'account-2', code: '1001', isPostable: false }));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/accounts/account-2', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        name: 'Operating bank',
+        subtype: null,
+        parent_account_id: null,
+        is_postable: false
+      })
+    });
+  });
+
+  it('updates account status through the status endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        request_id: 'request-14',
+        timestamp: '2026-04-27T00:00:00.000Z',
+        result: {
+          item: {
+            account_id: 'account-2',
+            organization_id: 'org-1',
+            code: '1001',
+            name: 'Operating bank',
+            type: 'asset',
+            status: 'inactive',
+            is_postable: false
+          }
+        }
+      })
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(updateAccountStatus(session, 'account-2', { status: 'inactive' })).resolves.toEqual(
+      expect.objectContaining({ accountId: 'account-2', status: 'inactive' })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/v1/accounts/account-2/status', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_id: 'org-1',
+        status: 'inactive'
+      })
+    });
   });
 });
 

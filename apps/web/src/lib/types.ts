@@ -234,6 +234,27 @@ export interface AccountSummary {
   updatedAt: string | null;
 }
 
+export interface CreateAccountInput {
+  code: string;
+  name: string;
+  type: string;
+  subtype?: string;
+  parentAccountId?: string;
+  status?: string;
+  isPostable?: boolean;
+}
+
+export interface UpdateAccountInput {
+  name?: string;
+  subtype?: string | null;
+  parentAccountId?: string | null;
+  isPostable?: boolean;
+}
+
+export interface UpdateAccountStatusInput {
+  status: string;
+}
+
 export interface ScheduleRunSummary {
   scheduleRunId: string;
   organizationId: string;

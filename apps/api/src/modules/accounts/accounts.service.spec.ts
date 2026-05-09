@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
 import type { AuthenticatedActor } from '../auth/authenticated-request.interface';
 
@@ -88,5 +89,237 @@ describe('AccountsService', () => {
       true,
       25
     ]);
+  });
+
+  it('creates an account after asserting organization access', async () => {
+    databaseService.query.mockResolvedValueOnce({
+      rows: [
+        {
+          account_id: 'account-1',
+          firm_id: 'firm-1',
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          code: '4100',
+          name: 'Consulting Revenue',
+          type: 'revenue',
+          subtype: 'services',
+          parent_account_id: null,
+          status: 'active',
+          is_postable: true
+        }
+      ]
+    });
+
+    await expect(
+      service.createAccount(
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          code: '4100',
+          name: 'Consulting Revenue',
+          type: 'revenue',
+          subtype: 'services'
+        },
+        actor
+      )
+    ).resolves.toEqual({
+      organization_id: '550e8400-e29b-41d4-a716-446655440000',
+      actor_context: actorContext,
+      item: {
+        account_id: 'account-1',
+        firm_id: 'firm-1',
+        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        code: '4100',
+        name: 'Consulting Revenue',
+        type: 'revenue',
+        subtype: 'services',
+        parent_account_id: null,
+        status: 'active',
+        is_postable: true
+      }
+    });
+
+    expect(tenantAccessService.assertOrganizationAccess).toHaveBeenCalledWith(actor, '550e8400-e29b-41d4-a716-446655440000');
+    expect(databaseService.query).toHaveBeenCalledWith(expect.stringContaining('insert into public.accounts'), [
+      'firm-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      '4100',
+      'Consulting Revenue',
+      'revenue',
+      'services',
+      null,
+      'active',
+      true
+    ]);
+  });
+
+  it('updates mutable account fields with firm and organization constraints', async () => {
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: '550e8400-e29b-41d4-a716-446655440001',
+            status: 'active'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440002'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: '550e8400-e29b-41d4-a716-446655440001',
+            firm_id: 'firm-1',
+            organization_id: '550e8400-e29b-41d4-a716-446655440000',
+            code: '1200',
+            name: 'Trade Debtors',
+            type: 'asset',
+            subtype: 'current',
+            parent_account_id: '550e8400-e29b-41d4-a716-446655440002',
+            status: 'active',
+            is_postable: false
+          }
+        ]
+      });
+
+    await expect(
+      service.updateAccount(
+        '550e8400-e29b-41d4-a716-446655440001',
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          name: 'Trade Debtors',
+          parent_account_id: '550e8400-e29b-41d4-a716-446655440002',
+          is_postable: false
+        },
+        actor
+      )
+    ).resolves.toMatchObject({
+      organization_id: '550e8400-e29b-41d4-a716-446655440000',
+      actor_context: actorContext,
+      item: {
+        account_id: '550e8400-e29b-41d4-a716-446655440001',
+        code: '1200',
+        name: 'Trade Debtors',
+        type: 'asset',
+        parent_account_id: '550e8400-e29b-41d4-a716-446655440002',
+        is_postable: false
+      },
+      activity_counts: null
+    });
+
+    expect(databaseService.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('where id = $1::uuid'),
+      ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', 'firm-1']
+    );
+    expect(databaseService.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('update public.accounts'),
+      [
+        '550e8400-e29b-41d4-a716-446655440001',
+        '550e8400-e29b-41d4-a716-446655440000',
+        'firm-1',
+        'Trade Debtors',
+        false,
+        null,
+        true,
+        '550e8400-e29b-41d4-a716-446655440002',
+        null,
+        false
+      ]
+    );
+  });
+
+  it('rejects account deactivation when posted journal lines exist', async () => {
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: '550e8400-e29b-41d4-a716-446655440001',
+            status: 'active'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ line_count: '2' }] });
+
+    await expect(
+      service.updateAccountStatus(
+        '550e8400-e29b-41d4-a716-446655440001',
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          status: 'inactive'
+        },
+        actor
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(databaseService.query).toHaveBeenCalledTimes(2);
+    expect(databaseService.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('from public.journal_entry_lines'),
+      ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', 'firm-1']
+    );
+  });
+
+  it('allows deactivation with draft lines and returns activity counts', async () => {
+    databaseService.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: '550e8400-e29b-41d4-a716-446655440001',
+            status: 'active'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ line_count: '0' }] })
+      .mockResolvedValueOnce({ rows: [{ line_count: '3' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            account_id: '550e8400-e29b-41d4-a716-446655440001',
+            status: 'inactive'
+          }
+        ]
+      });
+
+    await expect(
+      service.updateAccountStatus(
+        '550e8400-e29b-41d4-a716-446655440001',
+        {
+          organization_id: '550e8400-e29b-41d4-a716-446655440000',
+          status: 'inactive'
+        },
+        actor
+      )
+    ).resolves.toMatchObject({
+      item: {
+        account_id: '550e8400-e29b-41d4-a716-446655440001',
+        status: 'inactive'
+      },
+      activity_counts: {
+        posted_line_count: 0,
+        draft_line_count: 3
+      }
+    });
+
+    expect(databaseService.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('update public.accounts'),
+      [
+        '550e8400-e29b-41d4-a716-446655440001',
+        '550e8400-e29b-41d4-a716-446655440000',
+        'firm-1',
+        null,
+        false,
+        null,
+        false,
+        null,
+        'inactive',
+        null
+      ]
+    );
   });
 });

@@ -1,8 +1,8 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
-const accountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense'] as const;
-const accountStatuses = ['active', 'inactive'] as const;
+export const accountTypes = ['asset', 'liability', 'equity', 'revenue', 'expense'] as const;
+export const accountStatuses = ['active', 'inactive'] as const;
 
 function transformBoolean(value: unknown): boolean | undefined {
   if (value === undefined || value === '') {

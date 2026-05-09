@@ -4,6 +4,7 @@ import type {
   ApprovalRequestSummary,
   AuditEvent,
   CloseOverview,
+  CreateAccountInput,
   DashboardSnapshot,
   JournalDraftDetail,
   JournalEntryDetail,
@@ -16,7 +17,9 @@ import type {
   ScheduleRunDetail,
   ScheduleRunSummary,
   StatementRow,
-  TrialBalanceRow
+  TrialBalanceRow,
+  UpdateAccountInput,
+  UpdateAccountStatusInput
 } from './types';
 import type { ActorContext } from './types';
 import type { OperatorSession as Session } from './session';
@@ -132,6 +135,23 @@ async function fetchApi<TResult>(session: Session, apiPath: string, params: Reco
 async function postApi<TInput extends object, TResult>(session: Session, apiPath: string, input: TInput) {
   const response = await fetch(path(session.apiBaseUrl, apiPath), {
     method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.bearerToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new OperatorApiError('HTTP_ERROR', `API request failed with status ${response.status}.`);
+  }
+
+  return parseApiResponse<TResult>(response);
+}
+
+async function patchApi<TInput extends object, TResult>(session: Session, apiPath: string, input: TInput) {
+  const response = await fetch(path(session.apiBaseUrl, apiPath), {
+    method: 'PATCH',
     headers: {
       Authorization: `Bearer ${session.bearerToken}`,
       'Content-Type': 'application/json'
@@ -618,6 +638,10 @@ function accountSummary(item: Record<string, unknown>): AccountSummary {
   };
 }
 
+function accountMutationItem(result: Record<string, unknown>): AccountSummary {
+  return accountSummary((result.item ?? result) as Record<string, unknown>);
+}
+
 export async function listAccounts(
   session: Session,
   filters: { type?: string; status?: string; postableOnly?: boolean; limit?: number }
@@ -630,6 +654,71 @@ export async function listAccounts(
   });
 
   return (result.items ?? []).map(accountSummary);
+}
+
+export async function createAccount(session: Session, input: CreateAccountInput): Promise<AccountSummary> {
+  const result = await postApi<
+    {
+      organization_id: string;
+      code: string;
+      name: string;
+      type: string;
+      subtype?: string;
+      parent_account_id?: string;
+      status?: string;
+      is_postable?: boolean;
+    },
+    Record<string, unknown>
+  >(session, '/api/v1/accounts', {
+    organization_id: session.organizationId,
+    code: input.code,
+    name: input.name,
+    type: input.type,
+    subtype: input.subtype,
+    parent_account_id: input.parentAccountId,
+    status: input.status,
+    is_postable: input.isPostable
+  });
+
+  return accountMutationItem(result);
+}
+
+export async function updateAccount(session: Session, accountId: string, input: UpdateAccountInput): Promise<AccountSummary> {
+  const result = await patchApi<
+    {
+      organization_id: string;
+      name?: string;
+      subtype?: string | null;
+      parent_account_id?: string | null;
+      is_postable?: boolean;
+    },
+    Record<string, unknown>
+  >(session, `/api/v1/accounts/${accountId}`, {
+    organization_id: session.organizationId,
+    name: input.name,
+    subtype: input.subtype,
+    parent_account_id: input.parentAccountId,
+    is_postable: input.isPostable
+  });
+
+  return accountMutationItem(result);
+}
+
+export async function updateAccountStatus(
+  session: Session,
+  accountId: string,
+  input: UpdateAccountStatusInput
+): Promise<AccountSummary> {
+  const result = await patchApi<{ organization_id: string; status: string }, Record<string, unknown>>(
+    session,
+    `/api/v1/accounts/${accountId}/status`,
+    {
+      organization_id: session.organizationId,
+      status: input.status
+    }
+  );
+
+  return accountMutationItem(result);
 }
 
 export async function getTrialBalanceReport(
