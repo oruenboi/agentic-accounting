@@ -25,6 +25,10 @@ function titleCase(value: string | null | undefined) {
     .join(' ');
 }
 
+function pluralize(value: number, singular: string, plural = `${singular}s`) {
+  return `${formatCount(value)} ${value === 1 ? singular : plural}`;
+}
+
 export function ClosePage() {
   const { session } = useOperatorSession();
   const [asOfDate, setAsOfDate] = useState(today());
@@ -45,11 +49,13 @@ export function ClosePage() {
     return <EmptyState title="No close data" body="The backend did not return a close overview." />;
   }
 
+  const blockerCount = data.counts.pendingApprovals + data.counts.openProposals + data.counts.scheduleBlockers;
+  const closeReady = blockerCount === 0;
   const cards = [
-    { label: 'Pending approvals', count: data.counts.pendingApprovals, tone: 'pending' },
-    { label: 'Open proposals', count: data.counts.openProposals, tone: 'needs_review' },
-    { label: 'Schedule blockers', count: data.counts.scheduleBlockers, tone: 'variance_detected' },
-    { label: 'Recent entries', count: data.counts.recentEntries, tone: 'posted' }
+    { label: 'Pending approvals', count: data.counts.pendingApprovals, tone: 'pending', href: '#pending-approvals', action: 'Resolve' },
+    { label: 'Open proposals', count: data.counts.openProposals, tone: 'needs_review', href: '#open-proposals', action: 'Review' },
+    { label: 'Schedule blockers', count: data.counts.scheduleBlockers, tone: 'variance_detected', href: '#schedule-blockers', action: 'Clear' },
+    { label: 'Recent entries', count: data.counts.recentEntries, tone: 'posted', href: '#recent-entries', action: 'Inspect' }
   ];
 
   return (
@@ -69,30 +75,65 @@ export function ClosePage() {
         </div>
       </div>
 
+      <Card>
+        <CardContent className="flex flex-col gap-4 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge value={closeReady ? 'ready_to_close' : 'close_blocked'} />
+              <span className="text-sm font-semibold text-ink">
+                {closeReady ? 'No close blockers returned for this date.' : `${pluralize(blockerCount, 'blocker')} need attention.`}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-black/60">
+              {closeReady
+                ? 'Review recent posted entries, then keep the close evidence trail with schedules and reports.'
+                : 'Work the queue from approvals to proposals to schedule variances, then confirm recent ledger movement.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a className="rounded-xl bg-white/70 px-3 py-2 text-sm font-semibold text-ink ring-1 ring-black/10 hover:bg-white" href="#schedule-blockers">
+              Schedules
+            </a>
+            <a className="rounded-xl bg-white/70 px-3 py-2 text-sm font-semibold text-ink ring-1 ring-black/10 hover:bg-white" href="#pending-approvals">
+              Approvals
+            </a>
+            <Link className="rounded-xl bg-ink px-3 py-2 text-sm font-semibold text-paper hover:bg-accent" to="/reports">
+              Reports
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-4">
         {cards.map((card) => (
-          <Card key={card.label}>
+          <a key={card.label} href={card.href} className="block focus:outline-none focus:ring-2 focus:ring-accent/40">
+            <Card className="h-full transition hover:-translate-y-0.5 hover:bg-white">
             <CardContent className="space-y-3 py-6">
               <div className="flex items-start justify-between gap-3">
                 <span className="text-sm font-medium text-black/60">{card.label}</span>
                 <Badge value={card.tone} className="text-[10px]" />
               </div>
               <p className="text-4xl font-semibold text-ink">{formatCount(card.count)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">{card.action}</p>
             </CardContent>
-          </Card>
+            </Card>
+          </a>
         ))}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
+        <Card id="schedule-blockers">
           <CardHeader>
-            <CardTitle>Schedule blockers</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Schedule blockers</CardTitle>
+              <Badge value={pluralize(data.counts.scheduleBlockers, 'open')} />
+            </div>
           </CardHeader>
           <CardContent>
             {data.scheduleBlockers.length === 0 ? (
               <EmptyState title="No schedule blockers" body="No unreconciled or variance schedules were returned for this as-of date." />
             ) : (
-              <Table columns={['Schedule', 'As of', 'Variance', 'Open']}>
+              <Table columns={['Schedule', 'As of', 'Variance', 'Action']}>
                 {data.scheduleBlockers.map((run) => (
                   <TableRow key={run.scheduleRunId}>
                     <TableCell>
@@ -103,7 +144,7 @@ export function ClosePage() {
                     <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(run.variance)}</TableCell>
                     <TableCell>
                       <Link className="text-sm font-semibold text-accent" to={`/schedules/runs/${run.scheduleRunId}`}>
-                        Review
+                        Open review
                       </Link>
                     </TableCell>
                   </TableRow>
@@ -113,9 +154,12 @@ export function ClosePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="pending-approvals">
           <CardHeader>
-            <CardTitle>Pending approvals</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Pending approvals</CardTitle>
+              <Badge value={pluralize(data.counts.pendingApprovals, 'open')} />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.pendingApprovals.length === 0 ? (
@@ -130,16 +174,22 @@ export function ClosePage() {
                     </div>
                     <Badge value={approval.priority ?? approval.status} />
                   </div>
-                  <p className="mt-2 text-xs text-black/50">{formatDateTime(approval.submittedAt)}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                    <span className="text-black/50">{formatDateTime(approval.submittedAt)}</span>
+                    <span className="font-semibold text-accent">Open decision</span>
+                  </div>
                 </Link>
               ))
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="open-proposals">
           <CardHeader>
-            <CardTitle>Open proposals</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Open proposals</CardTitle>
+              <Badge value={pluralize(data.counts.openProposals, 'open')} />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.openProposals.length === 0 ? (
@@ -154,16 +204,22 @@ export function ClosePage() {
                     </div>
                     <Badge value={proposal.status} />
                   </div>
-                  <p className="mt-2 text-xs text-black/50">{formatDateTime(proposal.createdAt)}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                    <span className="text-black/50">{formatDateTime(proposal.createdAt)}</span>
+                    <span className="font-semibold text-accent">Open proposal</span>
+                  </div>
                 </Link>
               ))
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="recent-entries">
           <CardHeader>
-            <CardTitle>Recent posted entries</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Recent posted entries</CardTitle>
+              <Badge value={pluralize(data.counts.recentEntries, 'entry', 'entries')} />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.recentEntries.length === 0 ? (
@@ -178,7 +234,10 @@ export function ClosePage() {
                     </div>
                     <Badge value={entry.status} />
                   </div>
-                  <p className="mt-2 text-xs text-black/50">{entry.entryDate}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                    <span className="text-black/50">{entry.entryDate}</span>
+                    <span className="font-semibold text-accent">Inspect entry</span>
+                  </div>
                 </Link>
               ))
             )}
