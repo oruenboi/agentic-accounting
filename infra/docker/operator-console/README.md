@@ -75,6 +75,17 @@ TLS_EMAIL=agent@nexiuslabs.com
 
 Docker builds use the repository root `package-lock.json` with `npm ci`. Base images are pinned by digest, and application images are tagged and labeled with the release revision.
 
+When the API uses the self-hosted Supabase stack on the same VPS, also copy `compose.self-hosted-supabase.yaml` and include it in every Compose command:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.self-hosted-supabase.yaml \
+  up -d --no-build
+```
+
+The override joins only the API to the external `accounting_backplane` network. The network must already be created by the Supabase stack.
+
 ## Smoke Checks
 
 - `https://api.nexiuslabs.com/api/v1/health`
@@ -85,4 +96,4 @@ The web app is a static operator console. Operators still need a valid bearer to
 
 ## Rollback
 
-Set `APP_VERSION` and `APP_REVISION` to the previous deployed revision and run `docker compose up -d --no-build`. Retain at least the current and previous application images until smoke checks pass.
+Set `APP_VERSION` and `APP_REVISION` to the previous deployed revision and repeat the applicable `docker compose ... up -d --no-build` command. Retain at least the current and previous application images until smoke checks pass.
