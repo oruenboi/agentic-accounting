@@ -1,0 +1,10 @@
+[Unit]
+Description=Agentic Accounting production health check
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentic-accounting-healthcheck
+User=root
+Group=root

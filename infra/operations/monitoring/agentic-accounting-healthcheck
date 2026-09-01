@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+readonly API_HEALTH_URL="${API_HEALTH_URL:-https://api.nexiuslabs.com/api/v1/health}"
+readonly BACKUP_ROOT="${BACKUP_ROOT:-/srv/backups/agentic-accounting/daily}"
+readonly MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-108000}"
+readonly REQUIRED_CONTAINERS="${REQUIRED_CONTAINERS:-agentic-accounting-api-1 agentic-accounting-web-1 agentic-accounting-caddy-1 supabase-db supabase-auth supabase-kong}"
+
+failures=()
+
+for container in $REQUIRED_CONTAINERS; do
+  if [ "$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)" != "true" ]; then
+    failures+=("container not running: $container")
+    continue
+  fi
+
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")"
+  if [ "$health" != "none" ] && [ "$health" != "healthy" ]; then
+    failures+=("container unhealthy: $container ($health)")
+  fi
+done
+
+response_path="$(mktemp)"
+trap 'rm -f "$response_path"' EXIT
+
+if ! curl --fail --silent --show-error --max-time 15 "$API_HEALTH_URL" >"$response_path"; then
+  failures+=("public API health request failed")
+elif ! grep -q '"status":"ok"' "$response_path" \
+  || ! grep -q '"database":"ok"' "$response_path"; then
+  failures+=("public API health payload is degraded")
+fi
+
+latest_backup="$({ find "$BACKUP_ROOT" -maxdepth 1 -type f -name 'postgres-*.dump' -printf '%T@ %p\n' 2>/dev/null || true; } \
+  | sort -nr | head -n 1 | cut -d' ' -f2-)"
+if [ -z "$latest_backup" ]; then
+  failures+=("no custom PostgreSQL backup found")
+else
+  backup_age="$(( $(date +%s) - $(stat -c %Y "$latest_backup") ))"
+  if [ "$backup_age" -gt "$MAX_BACKUP_AGE_SECONDS" ]; then
+    failures+=("latest PostgreSQL backup is ${backup_age}s old")
+  fi
+
+  if [ ! -f "$latest_backup.sha256" ] \
+    || ! sha256sum --check "$latest_backup.sha256" >/dev/null 2>&1; then
+    failures+=("latest PostgreSQL backup checksum failed")
+  fi
+fi
+
+if [ "${#failures[@]}" -gt 0 ]; then
+  printf 'Agentic Accounting health check failed:\n' >&2
+  printf ' - %s\n' "${failures[@]}" >&2
+  exit 1
+fi
+
+echo "Agentic Accounting health check passed."

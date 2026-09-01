@@ -18,11 +18,12 @@ fi
 install -d -o root -g root -m 700 "$BACKUP_ROOT"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-final_path="$BACKUP_ROOT/postgres-all-$stamp.sql.gz"
-temp_path="$BACKUP_ROOT/.postgres-all-$stamp.sql.gz.tmp"
+final_path="$BACKUP_ROOT/postgres-$stamp.dump"
+temp_path="$BACKUP_ROOT/.postgres-$stamp.dump.tmp"
+toc_path="$BACKUP_ROOT/.postgres-$stamp.toc.tmp"
 
 cleanup() {
-  rm -f "$temp_path"
+  rm -f "$temp_path" "$toc_path"
 }
 trap cleanup EXIT
 
@@ -33,18 +34,23 @@ fi
 
 docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres >/dev/null
 docker exec "$POSTGRES_CONTAINER" \
-  pg_dumpall --clean --if-exists --quote-all-identifiers -U postgres \
-  | gzip -9 >"$temp_path"
+  pg_dump -U postgres -d postgres -Fc --no-owner --no-privileges \
+    --exclude-schema=extensions \
+    --exclude-schema=pgbouncer \
+    --exclude-schema=vault \
+  >"$temp_path"
 
-gzip -t "$temp_path"
 test -s "$temp_path"
+docker exec -i "$POSTGRES_CONTAINER" pg_restore --list <"$temp_path" >"$toc_path"
+grep -q 'TABLE DATA auth users' "$toc_path"
+grep -q 'TABLE DATA public organizations' "$toc_path"
 mv "$temp_path" "$final_path"
 sha256sum "$final_path" >"$final_path.sha256"
 chmod 600 "$final_path" "$final_path.sha256"
 
 find "$BACKUP_ROOT" -maxdepth 1 -type f \
-  \( -name 'postgres-all-*.sql.gz' -o -name 'postgres-all-*.sql.gz.sha256' \) \
+  \( -name 'postgres-*.dump' -o -name 'postgres-*.dump.sha256' \
+     -o -name 'postgres-all-*.sql.gz' -o -name 'postgres-all-*.sql.gz.sha256' \) \
   -mtime "+$RETENTION_DAYS" -delete
 
 echo "Created PostgreSQL backup: $final_path"
-

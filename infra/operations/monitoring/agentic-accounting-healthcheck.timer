@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Agentic Accounting production health check every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=agentic-accounting-healthcheck.service
+
+[Install]
+WantedBy=timers.target

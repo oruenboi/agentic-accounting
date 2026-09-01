@@ -4,6 +4,7 @@ Production VPS operations are divided into three controlled areas:
 
 - `backup/` contains the daily PostgreSQL logical-backup job and timer
 - `deploy/` records source and Docker image provenance without exposing secrets
+- `monitoring/` checks containers, public health, and backup freshness
 - `ssh/` contains the early-precedence SSH hardening policy
 
 The live deployment configuration remains in `/srv/agentic-accounting`, the
@@ -14,9 +15,7 @@ Direct root and password SSH login are disabled. Administrators connect as
 `darryl` with a dedicated key and elevate with the account's sudo password when
 root access is required. Environment files must remain mode `640` or stricter.
 
-Do not rebuild the current production images merely to add a Git tag. The
-Dockerfiles currently run `npm install` without consuming the committed
-workspace lockfile, so a rebuild is not deterministic. Fix that build contract
-before moving Compose from `latest` to revision-based image tags and OCI
-revision labels.
-
+Production application images consume the committed workspace lockfile, pin
+base images by digest, and carry the Git revision in both their tag and OCI
+metadata. Build and validate a candidate before changing the revision values in
+the deployment `.env` file.
