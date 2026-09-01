@@ -1,7 +1,7 @@
 ---
 owner: Codex
 status: in_progress
-last_reviewed: 2026-04-10
+last_reviewed: 2026-05-08
 ---
 
 # Documentation Inventory 01
@@ -60,6 +60,11 @@ Statuses:
 | Web UI route map | documented | `webui_routes_01.md` |
 | Web UI component system | documented | `webui_components_01.md` |
 | Web UI role visibility and screen priority | documented | `webui_roles_priorities_01.md` |
+| ERP expansion architecture | documented | `erp_architecture_01.md` |
+| ERP posting bridge and auto-posting policy | documented | `erp_posting_bridge_01.md` |
+| ERP phased module roadmap | documented | `erp_module_roadmap_01.md` |
+| ERP master data model | documented | `erp_master_data_01.md` |
+| ERP UI and agent surface | documented | `erp_ui_agent_surface_01.md` |
 
 ## Immediate Documentation Priorities
 No blocking documentation gaps remain.
@@ -98,6 +103,11 @@ Remaining work is implementation-facing and/or release-polish oriented:
 - `backend_processes_01.md` now covers synchronous, async, scheduled, maintenance, and agent-specific backend process classes.
 - `supabase_install_options_01.md` now covers hosted Supabase vs self-hosted Supabase, service expectations, environment values, and OSS support posture.
 - `bootstrap_ux_01.md` now covers the first one-click bootstrap plan for local, VPS, and optional OpenClaw setup.
+- `erp_architecture_01.md` now covers the accounting-first ERP expansion model, including operational subledgers, modular monolith boundaries, and shared control layers.
+- `erp_posting_bridge_01.md` now covers business events, posting intents, posting profiles, approval handoff, and low-risk auto-posting constraints.
+- `erp_module_roadmap_01.md` now covers the phased ERP rollout across foundation, AR/AP, documents, CRM/projects, inventory, fixed assets, HR/payroll summary, banking, tax, and advanced options.
+- `erp_master_data_01.md` now covers shared parties, party roles, items, documents, numbering sequences, module registry, and module permissions.
+- `erp_ui_agent_surface_01.md` now covers ERP UI navigation, client-visible surfaces, and safe read/proposal/workflow/commit agent tool classes.
 
 ## Notes
 - "Documented" means the repo has a stable written artifact that captures the topic well enough to guide implementation.

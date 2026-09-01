@@ -50,6 +50,28 @@ Key design rules:
 - Human and agent workflows use the same backend controls.
 - Approvals, idempotency, and audit events are first-class behavior, not UI-only conventions.
 
+## ERP Expansion Direction
+
+The planned ERP expansion keeps this project accounting-first. ERP modules should be added as tenant-scoped operational subledgers that feed the same accounting control plane instead of becoming separate sources of financial truth.
+
+Planned ERP module areas include:
+
+- AR/AP, documents, and cash workflows.
+- CRM, projects, time, expenses, and firm operations.
+- Procurement and inventory.
+- Fixed assets, HR records, and payroll summary imports.
+- Banking, tax, and advanced close support.
+
+ERP records will create business events and posting intents. Those intents must flow through posting profiles, approval policy, idempotency, audit logging, and the ledger posting engine before they affect financial reports. Low-risk auto-posting is allowed only when explicitly configured and policy-approved.
+
+The ERP planning set starts with:
+
+- `devplan/erp_architecture_01.md`
+- `devplan/erp_posting_bridge_01.md`
+- `devplan/erp_module_roadmap_01.md`
+- `devplan/erp_master_data_01.md`
+- `devplan/erp_ui_agent_surface_01.md`
+
 ## Requirements
 
 - Node.js 22 or later.
@@ -229,6 +251,8 @@ Start here:
 - `devplan/reporting_design_01.md`
 - `devplan/schedule_engine_01.md`
 - `devplan/bootstrap_ux_01.md`
+- `devplan/erp_architecture_01.md`
+- `devplan/erp_module_roadmap_01.md`
 
 Release and project docs:
 

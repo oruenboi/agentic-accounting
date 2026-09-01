@@ -26,6 +26,7 @@ The following areas are now documented in the repo:
 - API auth and client model
 - OpenClaw integration and hardening strategy
 - OSS packaging, self-hosting, and OpenClaw quickstarts
+- ERP expansion architecture, posting bridge, master data, UI/agent surface, and phased module roadmap
 
 ## What Has Shipped In The First Runtime Slice
 
@@ -61,6 +62,7 @@ Some lower-level foundations for these areas already exist, but the end-to-end p
 5. Implement the planned one-click bootstrap UX.
 6. Harden production deployment, backup, observability, and runbook guidance.
 7. Prove the OpenClaw integration against a pinned host strategy.
+8. Start the ERP foundation after the accounting control-plane gaps are stable: module registry, parties, items, documents, posting profiles, business events, and posting intents.
 
 ## Likely Launch Phases
 
@@ -89,6 +91,19 @@ Expand to other accounting firms or finance teams once:
 ### Phase 4: Optional managed offering
 Only after the OSS and self-hosted story is stable, consider a managed layer or hosted service.
 
+### ERP Expansion Track
+The ERP expansion should remain accounting-first and phased.
+
+Recommended ERP rollout:
+- ERP foundation: module registry, shared master data, documents, numbering, permissions, posting profiles, business events, and posting intents.
+- AR/AP and documents: customers, vendors, invoices, bills, receipts, payments, aging, and supporting evidence.
+- CRM/projects/time: firm operations, engagements, tasks, time, expenses, and firm billing.
+- Procurement/inventory: purchase orders, goods receipts, stock movements, valuation, and inventory adjustments.
+- Fixed assets/HR/payroll summary: asset register, depreciation, employee records, payroll imports, and reviewable journals.
+- Banking/tax/advanced close: statement imports, matching, tax codes, tax reports, and close evidence packs.
+
+ERP modules should use connector-ready interfaces, but live bank, payment, payroll, tax, and OCR integrations should wait until the internal contracts are proven.
+
 ## Release Shape
 
 The public release model is expected to include:
@@ -111,6 +126,10 @@ The project is not being positioned as a single `npm install` accounting product
 - Added the first API runtime slice for reporting, journal draft/proposal workflow, approvals, posting, reversals, audit reads, and agent-tool execution.
 - Added the first React operator console for dashboard triage, proposals, approvals, posted entries, and audit timelines.
 - Added API-only, split-domain operator-console, and Netlify deployment paths for the current runtime slices.
+
+### 2026-05-08
+- Documented the ERP expansion direction as accounting-first operational subledgers inside the existing modular monolith.
+- Added ERP planning docs for architecture, posting bridge, module roadmap, master data, and UI/agent surface.
 
 ### Earlier planning phase
 - Established the product direction as an accounting control plane for firms.
