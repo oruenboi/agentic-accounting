@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+umask 022
+
+readonly SOURCE_DIR="${SOURCE_DIR:-/home/darryl/agentic-accounting}"
+readonly OUTPUT_PATH="${OUTPUT_PATH:-/srv/agentic-accounting/DEPLOYMENT.manifest}"
+readonly API_IMAGE="${API_IMAGE:-agentic-accounting-api:latest}"
+readonly WEB_IMAGE="${WEB_IMAGE:-agentic-accounting-web:latest}"
+
+source_revision="$(sudo -u darryl git -C "$SOURCE_DIR" rev-parse HEAD)"
+source_branch="$(sudo -u darryl git -C "$SOURCE_DIR" branch --show-current)"
+if sudo -u darryl git -C "$SOURCE_DIR" diff --quiet \
+  && sudo -u darryl git -C "$SOURCE_DIR" diff --cached --quiet; then
+  source_state="clean"
+else
+  source_state="dirty"
+fi
+
+api_image_id="$(docker image inspect --format '{{.Id}}' "$API_IMAGE")"
+api_image_created="$(docker image inspect --format '{{.Created}}' "$API_IMAGE")"
+api_image_tags="$(docker image inspect --format '{{join .RepoTags ","}}' "$API_IMAGE")"
+web_image_id="$(docker image inspect --format '{{.Id}}' "$WEB_IMAGE")"
+web_image_created="$(docker image inspect --format '{{.Created}}' "$WEB_IMAGE")"
+web_image_tags="$(docker image inspect --format '{{join .RepoTags ","}}' "$WEB_IMAGE")"
+
+temp_path="$(mktemp "${OUTPUT_PATH}.tmp.XXXXXX")"
+trap 'rm -f "$temp_path"' EXIT
+
+printf '%s\n' \
+  "recorded_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  "source_path=$SOURCE_DIR" \
+  "source_branch=$source_branch" \
+  "source_revision=$source_revision" \
+  "source_state=$source_state" \
+  "api_image_id=$api_image_id" \
+  "api_image_created=$api_image_created" \
+  "api_image_tags=$api_image_tags" \
+  "web_image_id=$web_image_id" \
+  "web_image_created=$web_image_created" \
+  "web_image_tags=$web_image_tags" \
+  >"$temp_path"
+
+chown root:docker "$temp_path"
+chmod 640 "$temp_path"
+mv "$temp_path" "$OUTPUT_PATH"
+trap - EXIT
+
+echo "Recorded deployment manifest: $OUTPUT_PATH"
+

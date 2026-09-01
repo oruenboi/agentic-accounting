@@ -10,3 +10,8 @@ infra/supabase/seeds/generated/
 
 # Local Netlify folder
 .netlify
+
+# Local planning/editor artifacts
+.obsidian/
+**/.obsidian/
+Blueprint.zip

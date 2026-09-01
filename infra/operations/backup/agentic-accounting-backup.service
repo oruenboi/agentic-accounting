@@ -1,0 +1,14 @@
+[Unit]
+Description=Agentic Accounting PostgreSQL backup
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/agentic-accounting-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+

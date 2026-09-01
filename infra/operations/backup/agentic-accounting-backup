@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+umask 077
+
+readonly BACKUP_ROOT="${BACKUP_ROOT:-/srv/backups/agentic-accounting/daily}"
+readonly POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-supabase-db}"
+readonly RETENTION_DAYS="${RETENTION_DAYS:-14}"
+readonly LOCK_FILE="/run/lock/agentic-accounting-backup.lock"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another accounting backup is already running." >&2
+  exit 1
+fi
+
+install -d -o root -g root -m 700 "$BACKUP_ROOT"
+
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+final_path="$BACKUP_ROOT/postgres-all-$stamp.sql.gz"
+temp_path="$BACKUP_ROOT/.postgres-all-$stamp.sql.gz.tmp"
+
+cleanup() {
+  rm -f "$temp_path"
+}
+trap cleanup EXIT
+
+if [ "$(docker inspect --format '{{.State.Running}}' "$POSTGRES_CONTAINER")" != "true" ]; then
+  echo "PostgreSQL container is not running: $POSTGRES_CONTAINER" >&2
+  exit 1
+fi
+
+docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres >/dev/null
+docker exec "$POSTGRES_CONTAINER" \
+  pg_dumpall --clean --if-exists --quote-all-identifiers -U postgres \
+  | gzip -9 >"$temp_path"
+
+gzip -t "$temp_path"
+test -s "$temp_path"
+mv "$temp_path" "$final_path"
+sha256sum "$final_path" >"$final_path.sha256"
+chmod 600 "$final_path" "$final_path.sha256"
+
+find "$BACKUP_ROOT" -maxdepth 1 -type f \
+  \( -name 'postgres-all-*.sql.gz' -o -name 'postgres-all-*.sql.gz.sha256' \) \
+  -mtime "+$RETENTION_DAYS" -delete
+
+echo "Created PostgreSQL backup: $final_path"
+
