@@ -1,0 +1,17 @@
+.git
+.github
+.netlify
+.obsidian
+**/.obsidian
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+*.zip
+devplan/**
+docs/**
+infra/**
+README.md
+ROADMAP.md

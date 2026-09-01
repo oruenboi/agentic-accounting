@@ -35,6 +35,26 @@ jobs:
       - name: Test web
         run: npm run test:web
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Build API container
+        run: >-
+          docker build
+          --file apps/api/Dockerfile
+          --build-arg BUILD_REVISION=${{ github.sha }}
+          --tag agentic-accounting-api:${{ github.sha }}
+          .
+
+      - name: Build web container
+        run: >-
+          docker build
+          --file apps/web/Dockerfile
+          --build-arg BUILD_REVISION=${{ github.sha }}
+          --build-arg VITE_DEFAULT_API_BASE_URL=https://api.nexiuslabs.com
+          --tag agentic-accounting-web:${{ github.sha }}
+          .
+
   db-smoke:
     runs-on: ubuntu-latest
 

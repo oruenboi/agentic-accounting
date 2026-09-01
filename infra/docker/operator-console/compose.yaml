@@ -1,7 +1,11 @@
 services:
   api:
+    image: agentic-accounting-api:${APP_VERSION:-dev}
     build:
-      context: ../../../apps/api
+      context: ${SOURCE_ROOT:-../../..}
+      dockerfile: apps/api/Dockerfile
+      args:
+        BUILD_REVISION: ${APP_REVISION:-unknown}
     restart: unless-stopped
     env_file:
       - ./api.env
@@ -19,9 +23,12 @@ services:
       start_period: 20s
 
   web:
+    image: agentic-accounting-web:${APP_VERSION:-dev}
     build:
-      context: ../../../apps/web
+      context: ${SOURCE_ROOT:-../../..}
+      dockerfile: apps/web/Dockerfile
       args:
+        BUILD_REVISION: ${APP_REVISION:-unknown}
         VITE_DEFAULT_API_BASE_URL: ${WEB_DEFAULT_API_BASE_URL}
     restart: unless-stopped
     expose:
@@ -34,7 +41,7 @@ services:
       start_period: 10s
 
   caddy:
-    image: caddy:2.10-alpine
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     restart: unless-stopped
     depends_on:
       api:

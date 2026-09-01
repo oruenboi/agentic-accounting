@@ -34,6 +34,9 @@ If you keep the repo elsewhere, update the Compose build context accordingly.
   - expected keys:
     - `API_DOMAIN`
     - `TLS_EMAIL`
+    - `SOURCE_ROOT` (absolute path to the Git checkout in production)
+    - `APP_VERSION` (release tag, normally the short Git SHA)
+    - `APP_REVISION` (full Git commit SHA)
 - `api.env`
   - application runtime settings for `apps/api`
   - expected keys:
@@ -54,7 +57,12 @@ If you keep the repo elsewhere, update the Compose build context accordingly.
 2. Rename `.env.example` to `.env`.
 3. Rename `api.env.example` to `api.env`.
 4. Fill in real values.
-5. Run `docker compose up -d --build` from `/srv/agentic-accounting/`.
+5. Set `SOURCE_ROOT` to the checked-out repository path.
+6. Set `APP_VERSION` and `APP_REVISION` from the commit being released.
+7. Run `docker compose build --pull api` from `/srv/agentic-accounting/`.
+8. Verify the image revision label, then run `docker compose up -d --no-build`.
+
+Docker builds use the repository root `package-lock.json` with `npm ci`. Base images are pinned by digest, and the resulting application image is tagged and labeled with the release revision.
 
 ## Smoke Checks
 
@@ -66,13 +74,6 @@ If you keep the repo elsewhere, update the Compose build context accordingly.
 
 The report endpoints still require a valid Supabase bearer token and tenant membership in the database.
 
-## Current Blockers Outside This Config
+## Rollback
 
-- the repo checkout currently has no top-level `AGENTS.md`
-- the copied checkout does not include `.git` metadata
-- production values are still needed for:
-  - `API_DOMAIN`
-  - `TLS_EMAIL`
-  - `DATABASE_URL`
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
+Set `APP_VERSION` and `APP_REVISION` to the previous deployed revision and run `docker compose up -d --no-build`. Retain at least the current and previous application images until smoke checks pass.
