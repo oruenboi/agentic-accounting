@@ -26,7 +26,9 @@ const ids = {
   balancedEntry: '00000000-0000-4000-8000-000000000012',
   unbalancedEntry: '00000000-0000-4000-8000-000000000013',
   scheduleDefinition: '00000000-0000-4000-8000-000000000014',
-  scheduleRun: '00000000-0000-4000-8000-000000000015'
+  scheduleRun: '00000000-0000-4000-8000-000000000015',
+  partyA: '00000000-0000-4000-8000-000000000016',
+  partyB: '00000000-0000-4000-8000-000000000017'
 };
 
 function assertDisposableDatabase(url) {
@@ -147,6 +149,33 @@ async function seedTenantData(client) {
     `,
     [ids.cashA, ids.revenueA, ids.cashB, ids.firm, ids.orgA, ids.orgB]
   );
+  await client.query(
+    `
+      insert into public.erp_module_registrations (
+        firm_id, organization_id, module_name, status, enabled_by_user_id, enabled_at
+      )
+      values ($1, $2, 'foundation', 'enabled', $3, now())
+    `,
+    [ids.firm, ids.orgA, ids.userA]
+  );
+  await client.query(
+    `
+      insert into public.parties (id, firm_id, organization_id, party_type, display_name)
+      values
+        ($1, $3, $4, 'company', 'Org A Customer'),
+        ($2, $3, $5, 'company', 'Org B Vendor')
+    `,
+    [ids.partyA, ids.partyB, ids.firm, ids.orgA, ids.orgB]
+  );
+  await client.query(
+    `
+      insert into public.party_roles (firm_id, organization_id, party_id, role)
+      values
+        ($1, $2, $4, 'customer'),
+        ($1, $3, $5, 'vendor')
+    `,
+    [ids.firm, ids.orgA, ids.orgB, ids.partyA, ids.partyB]
+  );
 }
 
 async function assertCoreObjects(client) {
@@ -165,6 +194,9 @@ async function assertCoreObjects(client) {
         'audit_logs',
         'journal_entries',
         'journal_entry_lines',
+        'erp_module_registrations',
+        'parties',
+        'party_roles',
         'schedule_definitions',
         'schedule_runs',
         'schedule_reconciliations'
@@ -172,8 +204,8 @@ async function assertCoreObjects(client) {
     ]
   );
 
-  if (result.rowCount !== 8) {
-    throw new Error(`Expected 8 core tables, found ${result.rowCount}`);
+  if (result.rowCount !== 11) {
+    throw new Error(`Expected 11 core tables, found ${result.rowCount}`);
   }
 
   console.log('ok - core tables exist');
@@ -198,8 +230,31 @@ async function assertRlsIsolation() {
       throw new Error(`RLS isolation failed: ${JSON.stringify(result.rows)}`);
     }
 
-    console.log('ok - RLS hides other organization accounts');
+    const partiesResult = await client.query('select organization_id::text from public.parties order by display_name');
+    const visiblePartyOrganizationIds = new Set(partiesResult.rows.map((row) => row.organization_id));
+    if (!visiblePartyOrganizationIds.has(ids.orgA) || visiblePartyOrganizationIds.has(ids.orgB)) {
+      throw new Error(`Party RLS isolation failed: ${JSON.stringify(partiesResult.rows)}`);
+    }
+
+    console.log('ok - RLS hides other organization accounts and parties');
   });
+}
+
+async function assertPartyRoleGuards(client) {
+  await expectFailure(
+    'active party roles prevent party deactivation',
+    () => client.query(`update public.parties set status = 'inactive' where id = $1`, [ids.partyA]),
+    /Deactivate party roles before deactivating the party/
+  );
+
+  await client.query(`update public.party_roles set status = 'inactive' where party_id = $1`, [ids.partyA]);
+  await client.query(`update public.parties set status = 'inactive' where id = $1`, [ids.partyA]);
+
+  await expectFailure(
+    'inactive parties reject active roles',
+    () => client.query(`update public.party_roles set status = 'active' where party_id = $1`, [ids.partyA]),
+    /Active party roles require an active party/
+  );
 }
 
 async function assertAccountingPeriodGuard(client) {
@@ -324,6 +379,7 @@ async function main() {
     await assertUnbalancedJournalGuard();
     await assertLedgerImmutability(client);
     await assertScheduleConstraints(client);
+    await assertPartyRoleGuards(client);
   });
 
   await assertRlsIsolation();

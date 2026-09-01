@@ -104,6 +104,8 @@ Recommended ERP rollout:
 
 ERP modules should use connector-ready interfaces, but live bank, payment, payroll, tax, and OCR integrations should wait until the internal contracts are proven.
 
+Phase 0 implementation has started with the organization module registry and the shared party/party-role model. The next foundation slice is items, followed by documents and numbering.
+
 ## Release Shape
 
 The public release model is expected to include:

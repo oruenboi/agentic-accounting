@@ -14,6 +14,7 @@ Implemented today:
 - Reports for trial balance, balance sheet, profit and loss, and general ledger.
 - Schedule definitions, account selection, ledger-derived schedule generation, run detail review, and variance approval.
 - Agent tool schema and execution endpoints for accounting workflows.
+- ERP foundation module registry and tenant-scoped parties with reusable party roles.
 - React operator console for dashboard triage, proposals, approvals, entries, reports, schedules, and entity timelines.
 - Docker deployment bundles for API-only and operator-console stacks.
 - Netlify deployment config for the static operator console.
@@ -189,6 +190,11 @@ Representative implemented endpoints:
 
 - `GET /api/v1/health`
 - `GET /api/v1/accounts`
+- `GET /api/v1/erp/modules`
+- `PATCH /api/v1/erp/modules/:moduleName`
+- `GET /api/v1/erp/parties`
+- `POST /api/v1/erp/parties`
+- `POST /api/v1/erp/parties/:partyId/roles`
 - `GET /api/v1/reports/trial-balance`
 - `GET /api/v1/reports/balance-sheet`
 - `GET /api/v1/reports/profit-and-loss`

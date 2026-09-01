@@ -7,6 +7,7 @@ import { AgentToolsModule } from './modules/agent-tools/agent-tools.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CloseModule } from './modules/close/close.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { ErpFoundationModule } from './modules/erp-foundation/erp-foundation.module';
 import { HealthModule } from './modules/health/health.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
@@ -28,6 +29,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     ReportsModule,
     SchedulesModule,
     SettingsModule,
+    ErpFoundationModule,
     AgentToolsModule
   ]
 })
